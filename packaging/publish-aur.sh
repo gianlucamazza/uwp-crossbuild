@@ -90,15 +90,19 @@ git clone -q "ssh://$AUR_HOST/$PKGNAME.git" "$aur" ||
 	die "cannot clone $PKGNAME from the AUR — is the package registered, and the key loaded?"
 cp "$here/PKGBUILD" "$here/.SRCINFO" "$aur/"
 cd "$aur"
-if git diff --quiet; then
+git add PKGBUILD .SRCINFO
+# Staged, not working-tree: on a first publication the AUR repository is empty,
+# so `git diff` sees nothing — the files are untracked, not unchanged — and the
+# script would report success having pushed no package.
+if git diff --cached --quiet; then
 	step "Already published at $version — nothing to do"
 	exit 0
 fi
-git add PKGBUILD .SRCINFO
 git -c user.name="${GIT_AUTHOR_NAME:-Gianluca Mazza}" \
 	-c user.email="${GIT_AUTHOR_EMAIL:-info@gianlucamazza.it}" \
 	commit -q -m "$PKGNAME $version"
-git push -q origin master
+# HEAD:master because a fresh clone of an empty repository has no master yet.
+git push -q origin HEAD:master
 step "Published $PKGNAME $version to the AUR"
 echo "  https://aur.archlinux.org/packages/$PKGNAME"
 
