@@ -1,0 +1,7 @@
+# The Windows SDK is fetched at run time, never committed (see README: Licensing)
+sdk/
+work/
+build/
+*.winmd
+*.pri
+*.msix
