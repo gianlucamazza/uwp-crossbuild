@@ -29,9 +29,10 @@ console installs, with no Windows anywhere.
 
 ### Established
 
-- **A UWP application built here installs on an Xbox One dev kit.** It does not
-  launch: `0x8D160120`, the same code the console gives a Windows-built package,
-  so the two are at parity and neither is cleared.
+- **A UWP application built here installs on an Xbox One dev kit.** It has never
+  been seen to run: the console refuses to launch every sideloaded package,
+  Microsoft Edge included, with `0x8D160120`. That clears the cross-build of the
+  failure without demonstrating anything positive — running remains untested.
 - **`resources.pri` is not required to install.** Packaged with and without,
   both went on. makepri stays on by default because localised resources need the
   file at runtime — untestable while launching is.

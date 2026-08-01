@@ -40,10 +40,12 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
 ## Known limits
 
-- **It installs, it does not launch.** `/api/taskmanager/app` answers
-  `0x8D160120`. That is the same code the console gives xllama's _own_
-  Windows-built package, so the two are at parity and nothing here points at the
-  cross-build — but nothing proves it either. Treat launching as unverified.
+- **Never seen to run.** It installs; `/api/taskmanager/app` then answers
+  `0x8D160120`. That turns out to be the console: it refuses to launch **every**
+  sideloaded package, including Microsoft Edge as Microsoft signed and shipped
+  it. So the failure says nothing about the cross-build — and equally, nothing
+  here has ever been observed executing on a device. Treat running as untested,
+  not as broken.
 - **`resources.pri` turns out to be optional for install.** Packaged with and
   without it, both variants installed. Kept in `build-app.sh` by default because
   localised resources need it at runtime, which is not testable while launching
@@ -179,7 +181,7 @@ in a commit.
   a source list, and the result gets compared against its official release with
   `openappx inspect`. Its third-party DLLs (onnxruntime, DirectML) stay
   precompiled: they are copied, not rebuilt.
-- **Why `0x8D160120`?** Until it is understood, nothing built here can be shown
-  to run. It is not a cross-build problem — the Windows-built package fails the
-  same way — which makes it worth chasing independently.
+- **A device that can actually launch a sideloaded app.** This one cannot — not
+  even Microsoft Edge — so nothing built here has been seen to run. That needs
+  different hardware, not a different package.
 - **ARM64**, if a target ever needs it.
