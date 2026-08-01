@@ -3,10 +3,11 @@
 **Compile C++/WinRT for Windows, from Linux.** Companion to
 [openappx](../openappx), which packages, signs and deploys the result.
 
-> **Status: a full UWP application builds and packages.** `examples/hello-uwp`
-> goes from `.idl` to a signed `.msix` without touching Windows: metadata,
-> projection, an app-container PE and `resources.pri`. Not yet done: installing
-> that package on a device, and xllama itself.
+> **Status: a UWP application built here installs on a console.**
+> `examples/hello-uwp` goes from `.idl` to a signed `.msix` without touching
+> Windows — metadata, projection, an app-container PE, `resources.pri` — and an
+> Xbox One dev kit accepted it. It does not _launch_: see
+> [Known limits](#known-limits).
 
 ## Quick start
 
@@ -33,9 +34,24 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 | Compile + link C++/WinRT      | `clang-cl` + `lld-link`           | ✅ PE32+ that runs             |
 | `.idl` → `.winmd`             | `midlrt.exe` under Wine           | ✅ valid metadata              |
 | `.winmd` → projection headers | `cppwinrt.exe` under Wine         | ✅ `App.g.h`+`module.g.cpp`    |
-| resources → `resources.pri`   | `makepri.exe` (32-bit) under Wine | ✅                             |
+| resources → `resources.pri`   | `makepri.exe` (32-bit) under Wine | ✅ (optional — see below)      |
 | App-container executable      | `lld-link /appcontainer`          | ✅ `DllCharacteristics` 0x1000 |
-| Package, sign, deploy         | [openappx](../openappx)           | ✅ verified on an Xbox         |
+| Package, sign, deploy         | [openappx](../openappx)           | ✅ installed on an Xbox        |
+
+## Known limits
+
+- **It installs, it does not launch.** `/api/taskmanager/app` answers
+  `0x8D160120`. That is the same code the console gives xllama's _own_
+  Windows-built package, so the two are at parity and nothing here points at the
+  cross-build — but nothing proves it either. Treat launching as unverified.
+- **`resources.pri` turns out to be optional for install.** Packaged with and
+  without it, both variants installed. Kept in `build-app.sh` by default because
+  localised resources need it at runtime, which is not testable while launching
+  is; `--no-pri` skips the step, and with it the only reason makepri exists here.
+- **x64 only.** ARM64 has never been tried.
+- **No `.xaml` files, ever.** The XAML compiler has no Linux equivalent and does
+  not run under Wine. Build the UI in code, as `examples/hello-uwp` does.
+- **The PCH is ~190 MB** per project, in the object directory.
 
 ## Build times
 
@@ -150,10 +166,11 @@ examples/hello-uwp/          a UWP application in the shape that cross-compiles
 
 ## Next
 
-- **Install `hello-uwp` on a device.** It packs and signs; nothing yet proves a
-  console accepts it.
-- Then xllama itself, comparing the result against its official release with
-  `openappx inspect`.
-- Open question: is `resources.pri` actually required? Microsoft's own reference
-  package does not carry one, and openappx's `resource-only` example installs
-  without it. `build-app.sh --no-pri` exists to settle this on hardware.
+- **xllama itself** — the application this was built for. Its `.vcxproj` becomes
+  a source list, and the result gets compared against its official release with
+  `openappx inspect`. Its third-party DLLs (onnxruntime, DirectML) stay
+  precompiled: they are copied, not rebuilt.
+- **Why `0x8D160120`?** Until it is understood, nothing built here can be shown
+  to run. It is not a cross-build problem — the Windows-built package fails the
+  same way — which makes it worth chasing independently.
+- **ARM64**, if a target ever needs it.
