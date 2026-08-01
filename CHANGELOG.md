@@ -100,8 +100,8 @@ console installs, with no Windows anywhere.
 - Precompiled headers turn ~30 s per translation unit into ~1 s. A rebuild of
   `hello-uwp` goes from 98 s to 1.3 s.
 - **An existing project's UWP sources compile here unmodified** — a 3,700-line
-  page built in code, an ONNX Runtime bridge, an `IAsyncAction` downloader —
-  given its NuGet include directories.
+  page built in code, a native inference library behind a C++/WinRT wrapper, an
+  `IAsyncAction` downloader — given its NuGet include directories.
 
 ### Fixed
 
