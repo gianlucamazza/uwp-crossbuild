@@ -65,6 +65,12 @@ a specific version, and knowing which is the whole point of writing it down.
   stale layout is recursive: a project directory under it went with the layout,
   sources and all. The reverse guard exists now, and a test holds both doors
   shut.
+- **`fetch-sdk.sh` saved HTTP error pages as downloads.** curl without `--fail`
+  exits 0 on a 404, so the CDN's error XML became `sdksetup.exe` — and the cache
+  check then kept it, handing Wine the same non-installer on every rerun. The
+  cppwinrt `.nupkg` failed the same way, as 7z rejecting an archive with no
+  version or URL in sight. Both downloads now fail as downloads, name the URL,
+  and keep nothing on failure.
 
 ## 0.1.0 — 2026-08-01
 

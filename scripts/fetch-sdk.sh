@@ -46,8 +46,14 @@ command -v 7z >/dev/null || die "7z (p7zip) is required"
 mkdir -p "$WORK" "$SDK_ROOT"
 
 step "Downloading the SDK web installer"
+# --fail, and nothing kept on failure: without it an HTTP error saves the CDN's
+# error page as sdksetup.exe, the check above then treats it as cached, and
+# every rerun hands Wine a small XML file as the installer.
 [[ -f "$WORK/sdksetup.exe" ]] ||
-	curl -sSL -o "$WORK/sdksetup.exe" "$SDK_INSTALLER_URL"
+	curl -fsSL -o "$WORK/sdksetup.exe" "$SDK_INSTALLER_URL" || {
+	rm -f "$WORK/sdksetup.exe"
+	die "download failed: $SDK_INSTALLER_URL"
+}
 
 step "Fetching the SDK layout (~1.1 GB, cached in $WORK/layout)"
 if [[ ! -d "$WORK/layout/Installers" ]]; then
@@ -115,8 +121,15 @@ if [[ -z "$CPPWINRT_VERSION" ]]; then
 fi
 echo "  version $CPPWINRT_VERSION (must match the winrt/ headers)"
 if [[ ! -f "$SDK_ROOT/cppwinrt/bin/cppwinrt.exe" ]]; then
-	curl -sSL -o "$WORK/cppwinrt.nupkg" \
-		"https://www.nuget.org/api/v2/package/Microsoft.Windows.CppWinRT/$CPPWINRT_VERSION"
+	nupkg_url="https://www.nuget.org/api/v2/package/Microsoft.Windows.CppWinRT/$CPPWINRT_VERSION"
+	# --fail, or a 404 saves NuGet's error page as the .nupkg and the failure
+	# arrives as 7z rejecting an archive, naming neither the version nor the URL.
+	curl -fsSL -o "$WORK/cppwinrt.nupkg" "$nupkg_url" || {
+		rm -f "$WORK/cppwinrt.nupkg"
+		die "download failed: $nupkg_url
+  Does Microsoft.Windows.CppWinRT $CPPWINRT_VERSION exist on NuGet?
+  UWP_CPPWINRT_VERSION and the winrt/ headers have to describe the same version."
+	}
 	7z x -y -o"$SDK_ROOT/cppwinrt" "$WORK/cppwinrt.nupkg" "bin/cppwinrt.exe" >/dev/null
 fi
 
