@@ -128,9 +128,14 @@ precompiled header is ~190 MB and is reused until the header itself changes.
 | `p7zip`, `curl`                               | unpacking the NuGet and SDK payloads       | —             |
 | `python3`                                     | `fix-header-case.sh --canonical`           | 3.14          |
 
+`xwin` is on the AUR; anywhere else, a static binary from its
+[releases page](https://github.com/Jake-Shadle/xwin/releases) works as-is — CI's
+`full-build` job runs it that way.
+
 Nothing from Microsoft is redistributed: both `fetch-sdk.sh` and `xwin` download
-from Microsoft's CDN at run time under the SDK licence. CI must re-run them
-rather than cache the result in an artefact store.
+from Microsoft's CDN at run time under the SDK licence. CI's manual `full-build`
+job keeps that download in the repository's own ephemeral cache between runs;
+nothing is ever published as an artefact, committed, or shipped in a package.
 
 ## Fourteen things that will waste your afternoon
 

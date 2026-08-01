@@ -41,7 +41,9 @@ around each. That framing decides most questions:
   workaround with no version attached cannot ever be retired.
 - **Nothing from Microsoft is redistributed.** `fetch-sdk.sh` and `xwin`
   download at run time under the SDK licence. Do not commit the result, do not
-  cache it in an artefact store, do not check in a `.winmd` or a `.pri`.
+  publish it in a release or build artefact, do not check in a `.winmd` or a
+  `.pri`. CI's `full-build` job may keep its download in the repository's own
+  ephemeral cache — that copy never leaves it.
 
 ## What can be tested
 

@@ -35,9 +35,12 @@ Only the winmd is copied into the layout, because the package needs it.
 
 ## Three things this example encodes
 
-- **`#undef GetCurrentTime` right after `<windows.h>`.** `winbase.h` defines it
-  as a macro; XAML's `Timeline` declares a method by that name, so the projection
-  header stops parsing. The error blames the header, not the macro.
+- **`<unknwn.h>` by hand, before any C++/WinRT header.** `WIN32_LEAN_AND_MEAN`
+  drops `objbase.h` and with it `unknwn.h`, and `winrt/base.h` static_asserts
+  that `IUnknown` already exists. `pch.h` puts the include back — `#undef
+  GetCurrentTime` and the other clang adjustments are not in this project's
+  sources at all: they live in `include/msvc-compat.h`, which `build.sh`
+  force-includes.
 - **`<winrt/Windows.Foundation.Collections.h>` even though no collection is named
   here.** `UIElementCollection` is an `IVector`, and its `Append` has a deduced
   return type — unusable before the definition is visible.
