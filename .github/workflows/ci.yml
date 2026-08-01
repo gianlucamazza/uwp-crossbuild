@@ -1,0 +1,103 @@
+name: ci
+
+# Deliberately does not build anything. A real build downloads ~1.1 GB of
+# Windows SDK and CRT from Microsoft's CDN, which the licence permits but which
+# has no business running on every push. What runs here is everything that can
+# be checked without it — see tests/run-tests.sh for what that means, and
+# `full-build` below for the job that does the rest, on request.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Syntax
+        run: for f in scripts/*.sh tests/*.sh; do bash -n "$f"; done
+
+      - name: shellcheck
+        run: shellcheck scripts/*.sh tests/*.sh
+
+      - name: shfmt
+        run: |
+          curl -sSL -o /tmp/shfmt \
+            https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64
+          chmod +x /tmp/shfmt
+          /tmp/shfmt -d scripts/*.sh tests/*.sh
+
+      - name: Tests
+        run: tests/run-tests.sh
+
+      - name: Every script is executable
+        # A script that loses its +x bit still works via `bash x.sh` and fails
+        # for anyone following the README.
+        run: |
+          for f in scripts/*.sh tests/*.sh; do
+            [ -x "$f" ] || { echo "not executable: $f"; exit 1; }
+          done
+
+  full-build:
+    # The real thing: SDK, CRT, and a UWP application compiled end to end.
+    # Manual, because it is a 1.1 GB download and ~10 minutes.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install the toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            clang lld wine wine64 winetricks p7zip-full
+
+      - name: Cache the SDK
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uwp-crossbuild
+          key: sdk-${{ hashFiles('scripts/fetch-sdk.sh') }}
+
+      - name: What is missing
+        run: scripts/check-deps.sh || true
+
+      - name: SDK tools
+        run: |
+          winetricks -q msxml6
+          scripts/fetch-sdk.sh
+
+      - name: CRT and SDK headers
+        run: |
+          curl -sSL https://github.com/Jake-Shadle/xwin/releases/download/0.9.0/xwin-0.9.0-x86_64-unknown-linux-musl.tar.gz \
+            | tar xz -C /tmp --strip-components=1
+          /tmp/xwin --accept-license --arch x86_64 splat --output ~/.cache/uwp-crossbuild/xwin
+          scripts/fix-header-case.sh ~/.cache/uwp-crossbuild/xwin/sdk/include/cppwinrt/winrt --canonical
+
+      - name: Build the console example
+        run: scripts/build.sh --out /tmp/hello.exe examples/hello-winrt/app.cpp
+
+      - name: Build the UWP example
+        run: scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
+
+      - name: The executable is linked for the app container
+        # 0x1000 is IMAGE_DLLCHARACTERISTICS_APPCONTAINER. Without it a device
+        # refuses the package, and nothing on a build host notices.
+        run: |
+          value=$(objdump -p /tmp/hello-layout/hello.exe |
+                  awk '/DllCharacteristics/ {print $2}')
+          echo "DllCharacteristics=$value"
+          [ $((0x$value & 0x1000)) -ne 0 ] || { echo "not an app-container image"; exit 1; }
+
+      - name: The layout is packable
+        run: |
+          pip install openappx
+          openappx validate --root /tmp/hello-layout
+          openappx pack --root /tmp/hello-layout --out /tmp/hello.msix
+          openappx inspect --package /tmp/hello.msix

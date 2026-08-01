@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # There are no package manifests here — the toolchain is pinned inside the
+  # scripts and the CI workflow. This only watches the actions themselves.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

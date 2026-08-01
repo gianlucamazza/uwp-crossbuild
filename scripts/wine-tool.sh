@@ -24,6 +24,15 @@ die() {
 	exit 1
 }
 
+tool="${1:-}"
+shift || true
+# Check the tool name before the SDK: a typo should not send anyone off to
+# download 1.1 GB before finding out.
+case "$tool" in
+midlrt | makepri | cppwinrt) ;;
+*) die "usage: $0 <midlrt|makepri|cppwinrt> [args...]" ;;
+esac
+
 [[ -d "$KITS" ]] || die "SDK not found at $SDK_ROOT — run scripts/fetch-sdk.sh first"
 command -v wine >/dev/null || die "wine is not installed"
 
@@ -69,11 +78,8 @@ run_cppwinrt() {
 	WINEDEBUG="${WINEDEBUG:--all}" exec wine "$exe" "$@"
 }
 
-tool="${1:-}"
-shift || true
 case "$tool" in
 midlrt) run_midlrt "$@" ;;
 makepri) run_makepri "$@" ;;
 cppwinrt) run_cppwinrt "$@" ;;
-*) die "usage: $0 <midlrt|makepri|cppwinrt> [args...]" ;;
 esac

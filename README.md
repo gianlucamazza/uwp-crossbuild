@@ -1,7 +1,7 @@
 # uwp-crossbuild
 
 **Compile C++/WinRT for Windows, from Linux.** Companion to
-[openappx](../openappx), which packages, signs and deploys the result.
+[openappx](https://github.com/gianlucamazza/openappx), which packages, signs and deploys the result.
 
 > **Status: a UWP application built here installs on a console.**
 > `examples/hello-uwp` goes from `.idl` to a signed `.msix` without touching
@@ -29,14 +29,14 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
 ## What works
 
-| Step                          | Tool                              | Status                         |
-| ----------------------------- | --------------------------------- | ------------------------------ |
-| Compile + link C++/WinRT      | `clang-cl` + `lld-link`           | ✅ PE32+ that runs             |
-| `.idl` → `.winmd`             | `midlrt.exe` under Wine           | ✅ valid metadata              |
-| `.winmd` → projection headers | `cppwinrt.exe` under Wine         | ✅ `App.g.h`+`module.g.cpp`    |
-| resources → `resources.pri`   | `makepri.exe` (32-bit) under Wine | ✅ (optional — see below)      |
-| App-container executable      | `lld-link /appcontainer`          | ✅ `DllCharacteristics` 0x1000 |
-| Package, sign, deploy         | [openappx](../openappx)           | ✅ installed on an Xbox        |
+| Step                          | Tool                                                  | Status                         |
+| ----------------------------- | ----------------------------------------------------- | ------------------------------ |
+| Compile + link C++/WinRT      | `clang-cl` + `lld-link`                               | ✅ PE32+ that runs             |
+| `.idl` → `.winmd`             | `midlrt.exe` under Wine                               | ✅ valid metadata              |
+| `.winmd` → projection headers | `cppwinrt.exe` under Wine                             | ✅ `App.g.h`+`module.g.cpp`    |
+| resources → `resources.pri`   | `makepri.exe` (32-bit) under Wine                     | ✅ (optional — see below)      |
+| App-container executable      | `lld-link /appcontainer`                              | ✅ `DllCharacteristics` 0x1000 |
+| Package, sign, deploy         | [openappx](https://github.com/gianlucamazza/openappx) | ✅ installed on an Xbox        |
 
 ## Known limits
 
@@ -162,7 +162,16 @@ scripts/build.sh             clang-cl + lld-link, with PCH and parallel compiles
 scripts/build-app.sh         all of the above: a project directory -> a layout
 examples/hello-winrt/        C++/WinRT console program that exercises real APIs
 examples/hello-uwp/          a UWP application in the shape that cross-compiles
+tests/run-tests.sh           everything checkable without downloading the SDK
 ```
+
+## Licensing
+
+The scripts are MIT ([LICENSE](LICENSE)). **Nothing from Microsoft is
+redistributed**: `fetch-sdk.sh` and `xwin` fetch the SDK and CRT from Microsoft's
+CDN at run time, under the Windows SDK licence, into a cache this repository
+never touches. No `.winmd`, `.pri`, header or library from that download belongs
+in a commit.
 
 ## Next
 

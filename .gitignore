@@ -10,3 +10,4 @@ build/
 *.exe
 *.objs/
 *.build/
+tests/.tmp/

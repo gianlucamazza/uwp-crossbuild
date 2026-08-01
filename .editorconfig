@@ -1,0 +1,26 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+# The scripts are formatted with shfmt, which indents with tabs.
+[*.sh]
+indent_style = tab
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.{cpp,h,idl}]
+indent_size = 4
+
+[*.md]
+trim_trailing_whitespace = false
+
+# Manifests and assets are fixtures: leave their bytes alone.
+[examples/**/{AppxManifest.xml,*.png}]
+insert_final_newline = false
+trim_trailing_whitespace = false
