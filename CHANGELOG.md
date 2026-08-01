@@ -71,6 +71,10 @@ a specific version, and knowing which is the whole point of writing it down.
   cppwinrt `.nupkg` failed the same way, as 7z rejecting an archive with no
   version or URL in sight. Both downloads now fail as downloads, name the URL,
   and keep nothing on failure.
+- `build.sh` expanded `extra`, `pch_args` and `link_args` unguarded, which bash
+  before 4.4 counts as unbound under `set -u` when the array is empty — so a
+  plain `build.sh --out a.exe src.cpp`, with no `--`, died on those versions.
+  Guarded with `${arr[@]+…}`, the way `include_dirs` and `pids` already were.
 
 ## 0.1.0 — 2026-08-01
 

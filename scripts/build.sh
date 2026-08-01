@@ -134,7 +134,9 @@ if [[ -n "$pch" ]]; then
 	if [[ ! -f "$pchfile" || "$pch" -nt "$pchfile" ]]; then
 		echo "  precompiling $(basename "$pch")"
 		printf '#include "%s"\n' "$(basename "$pch")" >"$objdir/pch.cpp"
-		clang-cl "${common[@]}" "${extra[@]}" /c "$objdir/pch.cpp" \
+		# ${arr[@]+…}: an array that can be empty, expanded the way bash before
+		# 4.4 accepts under set -u — same as include_dirs and pids above.
+		clang-cl "${common[@]}" ${extra[@]+"${extra[@]}"} /c "$objdir/pch.cpp" \
 			"/Yc$(basename "$pch")" "/Fp$pchfile" "/Fo$objdir/pch.obj" \
 			"/I$(cd "$(dirname "$pch")" && pwd)"
 	fi
@@ -159,7 +161,8 @@ for src in "${sources[@]}"; do
 	flat="${flat#./}"
 	obj="$objdir/${flat//\//_}.obj"
 	objects+=("$obj")
-	clang-cl "${common[@]}" "${extra[@]}" "${pch_args[@]}" /c "$src" -o "$obj" &
+	clang-cl "${common[@]}" ${extra[@]+"${extra[@]}"} \
+		${pch_args[@]+"${pch_args[@]}"} /c "$src" -o "$obj" &
 	pids+=($!)
 	# A plain `wait -n` loop would be neater but needs bash 4.3+ semantics that
 	# differ across the versions in the wild; batching is enough here.
@@ -173,4 +176,4 @@ wait_all ${pids[@]+"${pids[@]}"} || die "compilation failed"
 [[ -n "$pch" ]] && objects+=("$objdir/pch.obj")
 
 exec clang-cl -target "$TARGET" "${objects[@]}" -o "$out" \
-	-fuse-ld=lld-link -link "${libs[@]}" "${link_args[@]}"
+	-fuse-ld=lld-link -link "${libs[@]}" ${link_args[@]+"${link_args[@]}"}
