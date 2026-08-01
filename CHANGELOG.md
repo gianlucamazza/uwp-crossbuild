@@ -60,6 +60,11 @@ a specific version, and knowing which is the whole point of writing it down.
   removes is symlinks.
 - `aur.yml` creates the private key file at 0600 rather than narrowing it after
   writing the key into it.
+- **`build-app.sh` deleted a project that lived under `--out`.** The guard
+  covered one direction only — an `--out` inside `--project` — while clearing a
+  stale layout is recursive: a project directory under it went with the layout,
+  sources and all. The reverse guard exists now, and a test holds both doors
+  shut.
 
 ## 0.1.0 — 2026-08-01
 

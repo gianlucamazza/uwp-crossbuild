@@ -158,6 +158,17 @@ echo '<Package><Applications><Application Id="x" Executable="hello.exe"/></Appli
 	>"$tmp/AppxManifest.xml"
 fails_with "--out inside --project is refused" "must be outside --project" \
 	"$scripts/build-app.sh" --project "$tmp" --out "$tmp/inside"
+# The reverse direction: clearing a stale layout is recursive, so a project
+# under --out would be deleted with it — sources and all.
+nested="$(mktemp -d)"
+cp "$tmp/AppxManifest.xml" "$nested/"
+mkdir "$nested/src"
+cp "$tmp/app.idl" "$tmp/AppxManifest.xml" "$nested/src/"
+fails_with "--project inside --out is refused" "must not live under --out" \
+	"$scripts/build-app.sh" --project "$nested/src" --out "$nested"
+assert "the nested project kept its sources" "app.idl was deleted" \
+	test -f "$nested/src/app.idl"
+rm -rf "$nested"
 # A directory that is not recognisably a layout is never cleared, whatever
 # --out was pointed at.
 elsewhere="$(mktemp -d)"

@@ -56,6 +56,10 @@ mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 [[ "$out" != "$project" && "$out" != "$project"/* ]] ||
 	die "--out must be outside --project: the layout is a build product, not a source"
+# The reverse as well: clearing a stale layout below is recursive, so a project
+# living under --out would be deleted with it, sources and all.
+[[ "$project" != "$out"/* ]] ||
+	die "--project must not live under --out: clearing a stale layout would delete it"
 
 # A layout is the complete contents of a package, so anything left over from an
 # earlier build ships with it — a renamed executable, a winmd from a project
