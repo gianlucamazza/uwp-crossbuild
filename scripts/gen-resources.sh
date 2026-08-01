@@ -8,7 +8,10 @@
 # lands in the layout, which is where the loader expects it.
 set -euo pipefail
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve through symlinks: these scripts locate their siblings and
+# include/msvc-compat.h relative to themselves, so a symlink on PATH must point
+# back at the real directory rather than at ~/.local/bin.
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 layout=""
 language="en-US"

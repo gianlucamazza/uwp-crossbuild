@@ -9,6 +9,23 @@
 > Xbox One dev kit accepted it. Nothing built here has been seen to _run_, for a
 > reason that is not about the build: see [Known limits](#known-limits).
 
+## Install
+
+```bash
+make install                    # into ~/.local; ~/.local/bin must be on PATH
+sudo make install PREFIX=/usr   # system-wide
+```
+
+The scripts land under `$PREFIX/lib/uwp-crossbuild` and are exposed as
+`uwp-build`, `uwp-build-app`, `uwp-check-deps` and so on. They are installed as
+a tree rather than as loose files: `build.sh` reads `include/msvc-compat.h` from
+beside itself. `make uninstall` removes everything.
+
+`packaging/PKGBUILD` builds an Arch package from a release tag.
+
+Running from a checkout works too — every example below does — and needs no
+installation at all.
+
 ## Quick start
 
 ```bash
@@ -179,6 +196,8 @@ scripts/gen-resources.sh     a layout -> resources.pri
 scripts/build.sh             clang-cl + lld-link, with PCH and parallel compiles
 scripts/build-app.sh         all of the above: a project directory -> a layout
 include/msvc-compat.h        force-included: what clang needs that MSVC assumes
+Makefile                     install / uninstall / check
+packaging/PKGBUILD           Arch package
 examples/hello-winrt/        C++/WinRT console program that exercises real APIs
 examples/hello-uwp/          a UWP application in the shape that cross-compiles
 tests/run-tests.sh           everything checkable without downloading the SDK

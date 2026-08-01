@@ -14,7 +14,10 @@
 # would land next to the generated files and shadow the ones you wrote.
 set -euo pipefail
 
-here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve through symlinks: these scripts locate their siblings and
+# include/msvc-compat.h relative to themselves, so a symlink on PATH must point
+# back at the real directory rather than at ~/.local/bin.
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
 SDK_VERSION="${UWP_SDK_VERSION:-10.0.22621.0}"
 UNION="$SDK_ROOT/Windows Kits/10/UnionMetadata/$SDK_VERSION"

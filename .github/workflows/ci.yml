@@ -36,6 +36,33 @@ jobs:
       - name: Tests
         run: tests/run-tests.sh
 
+      - name: Install, then run what was installed
+        # The consumer surface rots silently otherwise. These scripts locate
+        # include/msvc-compat.h relative to themselves, so anything that
+        # installs them individually — or any new file they start reading —
+        # breaks outside a checkout while every in-tree test still passes.
+        run: |
+          make install PREFIX=/tmp/prefix
+          test -x /tmp/prefix/bin/uwp-build
+          # Run from elsewhere, through the symlink, with no checkout in sight.
+          cd /tmp
+          /tmp/prefix/bin/uwp-build 2>&1 | grep -q "\-\-out is required"
+          /tmp/prefix/bin/uwp-build-app --project /nonexistent --out /tmp/x 2>&1 \
+            | grep -q "no app.idl"
+          test -f /tmp/prefix/lib/uwp-crossbuild/include/msvc-compat.h
+          cd "$GITHUB_WORKSPACE"
+          make uninstall PREFIX=/tmp/prefix
+          test -z "$(find /tmp/prefix -type f)"
+
+      - name: The PKGBUILD agrees with the tree
+        run: |
+          for script in scripts/*.sh; do
+            grep -q "$(basename "$script")" Makefile ||
+              { echo "$script is not installed by the Makefile"; exit 1; }
+          done
+          grep -q "pkgver=$(sed -n 's/^## \([0-9.]*\) .*/\1/p' CHANGELOG.md | head -1)" \
+            packaging/PKGBUILD || { echo "PKGBUILD pkgver != CHANGELOG"; exit 1; }
+
       - name: Every script is executable
         # A script that loses its +x bit still works via `bash x.sh` and fails
         # for anyone following the README.
