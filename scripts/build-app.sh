@@ -2,6 +2,7 @@
 # build-app.sh — an example directory in, a package layout out.
 #
 #   build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
+#                [--name NAME] [--jobs N] [--language TAG] [--no-pri]
 #
 # Drives the whole chain: midlrt and cppwinrt under Wine for the metadata and the
 # projection, clang-cl for the executable, makepri for the resources. The result
@@ -9,7 +10,9 @@
 #
 # The project directory must hold app.idl, AppxManifest.xml, Assets/ and the
 # sources. --name defaults to the manifest's Application/@Executable minus .exe,
-# which is also the namespace the .idl declares.
+# which is also the namespace the .idl declares. --jobs and --language pass
+# through to build.sh and gen-resources.sh, which own their defaults (nproc and
+# en-US); --no-pri skips makepri entirely.
 set -euo pipefail
 
 # Resolve through symlinks: these scripts locate their siblings and
@@ -21,6 +24,8 @@ project=""
 out=""
 name=""
 no_pri=0
+language=""
+jobs=""
 die() {
 	echo "error: $*" >&2
 	exit 1
@@ -40,6 +45,8 @@ while [[ $# -gt 0 ]]; do
 	--project) value "$1" $# "${2:-}" && project="$2" && shift 2 ;;
 	--out) value "$1" $# "${2:-}" && out="$2" && shift 2 ;;
 	--name) value "$1" $# "${2:-}" && name="$2" && shift 2 ;;
+	--jobs) value "$1" $# "${2:-}" && jobs="$2" && shift 2 ;;
+	--language) value "$1" $# "${2:-}" && language="$2" && shift 2 ;;
 	--no-pri) no_pri=1 && shift ;;
 	*) die "unknown argument $1" ;;
 	esac
@@ -102,6 +109,7 @@ for f in "$project"/*.cpp; do [[ -f "$f" ]] && sources+=("$f"); done
 # ~1 s per translation unit.
 build_args=(--uwp --out "$out/$name.exe")
 [[ -f "$project/pch.h" ]] && build_args+=(--pch "$project/pch.h")
+[[ -n "$jobs" ]] && build_args+=(--jobs "$jobs")
 UWP_OBJ_DIR="$build/obj" \
 	"$here/build.sh" "${build_args[@]}" "${sources[@]}" -- /I"$gen" /I"$project"
 
@@ -113,7 +121,9 @@ cp "$gen/$name.winmd" "$out/"
 
 if [[ $no_pri -eq 0 ]]; then
 	step "Resources"
-	"$here/gen-resources.sh" --layout "$out"
+	pri_args=(--layout "$out")
+	[[ -n "$language" ]] && pri_args+=(--language "$language")
+	"$here/gen-resources.sh" "${pri_args[@]}"
 fi
 
 step "Layout ready: $out"

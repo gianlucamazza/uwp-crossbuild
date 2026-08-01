@@ -154,6 +154,8 @@ echo "build-app.sh guards"
 tmp="$(mktemp -d)"
 fails_with "--project is required" "--project and --out are required" \
 	"$scripts/build-app.sh" --out "$tmp/out"
+fails_with "build-app reports a flag with no value" "--language needs a value" \
+	"$scripts/build-app.sh" --language
 fails_with "a project without app.idl is refused" "no app.idl" \
 	"$scripts/build-app.sh" --project "$tmp" --out "$tmp/out"
 touch "$tmp/app.idl"
