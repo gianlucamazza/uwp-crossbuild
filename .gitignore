@@ -5,3 +5,8 @@ build/
 *.winmd
 *.pri
 *.msix
+*.pch
+*.obj
+*.exe
+*.objs/
+*.build/

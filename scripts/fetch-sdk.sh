@@ -13,7 +13,13 @@ SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
 WORK="${UWP_SDK_WORK:-$HOME/.cache/uwp-crossbuild/work}"
 SDK_VERSION="${UWP_SDK_VERSION:-10.0.22621.0}"
 SDK_INSTALLER_URL="${UWP_SDK_URL:-https://go.microsoft.com/fwlink/?linkid=2196241}"
-CPPWINRT_URL="https://www.nuget.org/api/v2/package/Microsoft.Windows.CppWinRT"
+# cppwinrt.exe writes a static_assert pinning the version of the winrt/ headers
+# it expects, so its version must match the projection headers xwin installs —
+# take the newest from NuGet and every build fails with "Mismatched C++/WinRT
+# headers". Read the version out of the headers when they are there.
+CPPWINRT_VERSION="${UWP_CPPWINRT_VERSION:-}"
+CPPWINRT_FALLBACK="2.0.250303.1"
+XWIN_ROOT="${UWP_XWIN_ROOT:-$HOME/.cache/uwp-crossbuild/xwin}"
 
 # Only these four MSIs matter. The full layout is ~1.1 GB; these hold the tools,
 # the platform metadata and the IDL/headers midlrt includes.
@@ -78,8 +84,17 @@ done
 echo "  linked $created files"
 
 step "Fetching cppwinrt.exe"
+if [[ -z "$CPPWINRT_VERSION" ]]; then
+	base="$XWIN_ROOT/sdk/include/cppwinrt/winrt/base.h"
+	if [[ -f "$base" ]]; then
+		CPPWINRT_VERSION=$(sed -n 's/^#define CPPWINRT_VERSION "\(.*\)"/\1/p' "$base" | head -1)
+	fi
+	CPPWINRT_VERSION="${CPPWINRT_VERSION:-$CPPWINRT_FALLBACK}"
+fi
+echo "  version $CPPWINRT_VERSION (must match the winrt/ headers)"
 if [[ ! -f "$SDK_ROOT/cppwinrt/bin/cppwinrt.exe" ]]; then
-	curl -sSL -o "$WORK/cppwinrt.nupkg" "$CPPWINRT_URL"
+	curl -sSL -o "$WORK/cppwinrt.nupkg" \
+		"https://www.nuget.org/api/v2/package/Microsoft.Windows.CppWinRT/$CPPWINRT_VERSION"
 	7z x -y -o"$SDK_ROOT/cppwinrt" "$WORK/cppwinrt.nupkg" "bin/cppwinrt.exe" >/dev/null
 fi
 

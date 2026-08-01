@@ -1,0 +1,17 @@
+// The only runtimeclass this app declares. EntryPoint="hello.App" in
+// AppxManifest.xml is resolved against the .winmd midlrt produces from this file,
+// so the winmd has to ship inside the package.
+//
+// MainPage is deliberately absent: it is a plain C++ class, not a runtimeclass.
+// That is what lets the whole app skip the XAML compiler.
+//
+// Note: midlrt's lexer rejects a backtick anywhere in the file, comments
+// included, with "MIDL2025 Illegal character (0x60)".
+namespace hello
+{
+    [default_interface]
+    runtimeclass App : Windows.UI.Xaml.Application
+    {
+        App();
+    }
+}

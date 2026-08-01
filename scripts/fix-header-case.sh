@@ -36,31 +36,37 @@ case "$mode" in
 	;;
 --canonical)
 	python3 - "$target" <<'PY'
-import os, pathlib, sys
+import os, pathlib, re, sys
 
-# Projection header names mirror WinRT namespaces, so the canonical spelling is
-# the namespace: windows.foundation.collections.h -> Windows.Foundation.Collections.h.
-# Segments that are acronyms stay upper-case (Windows.AI.MachineLearning.h).
-ACRONYMS = {
-    "ai", "ui", "xaml", "api", "ip", "url", "http", "json", "xml", "rss", "sms",
-    "nfc", "usb", "gpio", "spi", "i2c", "pwm", "hid", "dns", "ftp", "ssl", "tls",
-    "uri", "gui", "cpu", "gpu", "ml", "ar", "vr", "3d", "2d", "hd", "sd", "tv",
-    "pc", "os", "io", "db", "id",
-}
+# Projection header names mirror WinRT namespaces, and cppwinrt writes them
+# lower-cased: windows.foundation.collections.h. Guessing the capitalisation back
+# does not work — ApplicationModel, DataTransfer and every other compound segment
+# would come out as Applicationmodel. Read it from the file instead: every
+# projection header declares its own namespace, spelled correctly.
+NAMESPACE = re.compile(rb"^WINRT_EXPORT namespace winrt::([A-Za-z0-9_:]+)", re.M)
 
 directory = pathlib.Path(sys.argv[1])
+
+# Idempotent: the symlinks in here are ours (xwin ships plain files), so drop
+# them before rebuilding, or a wrong alias from an earlier run would survive.
+removed = 0
+for path in sorted(directory.iterdir()):
+    if path.is_symlink():
+        path.unlink()
+        removed += 1
+
 created = 0
 for path in sorted(directory.iterdir()):
     if not path.is_file() or path.suffix != ".h":
         continue
-    segments = path.name[:-2].split(".")
-    canonical = ".".join(
-        s.upper() if s.lower() in ACRONYMS else s.capitalize() for s in segments
-    ) + ".h"
+    match = NAMESPACE.search(path.read_bytes())
+    if not match:
+        continue
+    canonical = match.group(1).decode().replace("::", ".") + ".h"
     if canonical != path.name and not (directory / canonical).exists():
         os.symlink(path.name, directory / canonical)
         created += 1
-print(f"{created} canonical-case aliases in {directory}")
+print(f"{created} canonical-case aliases in {directory} ({removed} stale removed)")
 PY
 	;;
 *)
