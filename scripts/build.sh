@@ -154,12 +154,16 @@ wait_all() { # wait_all <pid...>
 objects=()
 pids=()
 for src in "${sources[@]}"; do
-	# Named after the whole path, not the basename: src/util.cpp and
-	# vendor/util.cpp would otherwise compile to the same object, in parallel,
-	# and the link would take whichever finished last without a word.
+	# Named after the whole path plus a checksum of it. The path alone, with
+	# every / replaced by _, is not injective: src/util.cpp and src_util.cpp
+	# would meet in the same object, in parallel, and the link would take
+	# whichever finished last without a word — and a source named pch.cpp
+	# would collide with the PCH's own object the same way. The checksum
+	# settles every such pair.
 	flat="${src%.*}"
 	flat="${flat#./}"
-	obj="$objdir/${flat//\//_}.obj"
+	crc=$(printf %s "$src" | cksum)
+	obj="$objdir/${flat//\//_}.${crc%% *}.obj"
 	objects+=("$obj")
 	clang-cl "${common[@]}" ${extra[@]+"${extra[@]}"} \
 		${pch_args[@]+"${pch_args[@]}"} /c "$src" -o "$obj" &
