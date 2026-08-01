@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # build.sh — compile C++/WinRT sources into a Windows PE, from Linux.
 #
-#   build.sh --out app.exe [--uwp] [--pch pch.h] [--jobs N] \
+#   build.sh --out app.exe [--uwp] [--pch pch.h] [--jobs N] [-I DIR] \
 #            [--link-arg X] src/*.cpp [-- extra clang-cl args]
 #
 #     --uwp        build for the app container: /appcontainer and the windows
 #                  subsystem. Required for anything that installs as a UWP app.
+#     -I / --include  an extra include directory (repeatable). Use it for
+#                  third-party headers — a NuGet native package, say — so a
+#                  source tree written for Visual Studio compiles unmodified.
 #     --pch        precompile this header and reuse it for every source. Worth
 #                  it: including the XAML projection costs ~32 s per translation
 #                  unit, ~1 s through a PCH (measured, see README).
@@ -21,6 +24,8 @@ TARGET="${UWP_TARGET:-x86_64-pc-windows-msvc}"
 ARCH_DIR="${UWP_ARCH_DIR:-x86_64}"
 STD="${UWP_CXX_STD:-c++20}"
 
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 out=""
 pch=""
 jobs="$(nproc 2>/dev/null || echo 4)"
@@ -28,12 +33,14 @@ uwp=0
 sources=()
 extra=()
 link_args=()
+include_dirs=()
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--out) out="$2" && shift 2 ;;
 	--pch) pch="$2" && shift 2 ;;
 	--jobs) jobs="$2" && shift 2 ;;
 	--uwp) uwp=1 && shift ;;
+	-I | --include) include_dirs+=("/I$2") && shift 2 ;;
 	--link-arg) link_args+=("$2") && shift 2 ;;
 	--)
 		shift
@@ -53,14 +60,21 @@ die() {
 [[ -d "$XWIN_ROOT/crt/include" ]] || die "no CRT at $XWIN_ROOT — run fetch-sdk.sh"
 command -v clang-cl >/dev/null || die "clang-cl not found"
 
+# Force-included before everything: the two adjustments a source tree written
+# for MSVC needs in order to compile with clang unchanged. See the header.
+compat="$here/../include/msvc-compat.h"
+[[ -f "$compat" ]] || die "missing $compat"
+
 common=(
 	-target "$TARGET" "/std:$STD" /EHsc /W3
+	"/FI$compat"
 	/imsvc "$XWIN_ROOT/crt/include"
 	/imsvc "$XWIN_ROOT/sdk/include/ucrt"
 	/imsvc "$XWIN_ROOT/sdk/include/um"
 	/imsvc "$XWIN_ROOT/sdk/include/shared"
 	/imsvc "$XWIN_ROOT/sdk/include/winrt"
 	/imsvc "$XWIN_ROOT/sdk/include/cppwinrt"
+	${include_dirs[@]+"${include_dirs[@]}"}
 )
 libs=(
 	/libpath:"$XWIN_ROOT/crt/lib/$ARCH_DIR"

@@ -63,6 +63,13 @@ for path in sorted(directory.iterdir()):
     if not match:
         continue
     canonical = match.group(1).decode().replace("::", ".") + ".h"
+    # The namespace is only allowed to fix the *casing* of this file's own name.
+    # Without that check base.h wins Windows.Foundation.h, because it forward-
+    # declares winrt::Windows::Foundation near the top and sorts first — and the
+    # real windows.foundation.h, the one holding box_value, then has no alias at
+    # all. That failure looks like a missing function, not a bad symlink.
+    if canonical.lower() != path.name.lower():
+        continue
     if canonical != path.name and not (directory / canonical).exists():
         os.symlink(path.name, directory / canonical)
         created += 1

@@ -82,7 +82,7 @@ Nothing from Microsoft is redistributed: both `fetch-sdk.sh` and `xwin` download
 from Microsoft's CDN at run time under the SDK licence. CI must re-run them
 rather than cache the result in an artefact store.
 
-## Thirteen things that will waste your afternoon
+## Fourteen things that will waste your afternoon
 
 Every one of these fails while pointing somewhere else. The scripts handle them;
 this is the record of why they exist.
@@ -95,10 +95,14 @@ this is the record of why they exist.
    vcxproj specifies `stdcpp17`.)_
 
 2. **Projection header casing cannot be guessed.** `#include
-<winrt/Windows.ApplicationModel.Activation.h>` meets a file named
+   <winrt/Windows.ApplicationModel.Activation.h>` meets a file named
    `windows.applicationmodel.activation.h`, and capitalising each segment gives
    `Applicationmodel`. `fix-header-case.sh --canonical` reads the namespace out
-   of each header instead, where it is spelled correctly.
+   of each header instead, where it is spelled correctly — but only to fix
+   *that* file's own casing. Let a header claim any namespace it declares and
+   `base.h`, which forward-declares half of them and sorts first, takes
+   `Windows.Foundation.h` for itself. The real one holds `box_value`, so the
+   symptom is a missing function.
 
 3. **`WindowsApp.lib` is not optional.** Without it the link fails on
    `WINRT_IMPL_CoInitializeEx` and friends, which reads like a broken toolchain
@@ -112,38 +116,49 @@ this is the record of why they exist.
    macro, XAML's `Timeline` declares a method by that name, and the projection
    header stops parsing. The error blames the header.
 
-6. **`/DWINAPI_FAMILY=WINAPI_FAMILY_APP` breaks `<cstdlib>`.** The header
+6. **An STL header must precede `winrt/base.h`.** base.h enables coroutines with
+   `#ifdef __cpp_lib_coroutine` *before* including `<coroutine>`. Under MSVC the
+   macro is already there from whichever STL header came first; a `pch.h`
+   opening with `<windows.h>` leaves clang without it, and coroutine support
+   compiles out silently. An ordinary `IAsyncAction` is then reported as "this
+   function cannot be a coroutine", pointing at your code.
+
+   Handled for you: `include/msvc-compat.h` is force-included ahead of every
+   translation unit, so a source tree written for Visual Studio compiles
+   unmodified. That is where this and `GetCurrentTime` live.
+
+7. **`/DWINAPI_FAMILY=WINAPI_FAMILY_APP` breaks `<cstdlib>`.** The header
    partition hides `system` and `getenv` outside the desktop family while the
    MSVC STL still writes `using _CSTD system;` unconditionally. `--uwp`
    deliberately leaves it out; the app container is set at link time instead.
 
 ### The SDK tools
 
-7. **midlrt shells out to `cl.exe`**, reporting `MIDL1005: cannot find C
+8. **midlrt shells out to `cl.exe`**, reporting `MIDL1005: cannot find C
 preprocessor`. Pass `/no_cpp`; a normal UWP `.idl` has no directives.
 
-8. **`WinRTBase.idl` vs `winrtbase.idl`.** Same file on NTFS, two files here.
+9. **`WinRTBase.idl` vs `winrtbase.idl`.** Same file on NTFS, two files here.
    `fix-header-case.sh --lower` handles the include directories.
 
-9. **MAX_PATH, silently.** A `.winmd` path over 260 characters arrives truncated
+10. **MAX_PATH, silently.** A `.winmd` path over 260 characters arrives truncated
    — `...UniversalApiContract.w?` — and is rejected as "not a winmd". Nothing
    mentions length. Build from a short directory.
 
-10. **`Windows.winmd` ships in its own MSI** (_Windows SDK Facade Windows WinMD
+11. **`Windows.winmd` ships in its own MSI** (_Windows SDK Facade Windows WinMD
     Versioned_), separate from the tools and the contracts. Without
     `/metadata_dir` pointing at `UnionMetadata/`, midlrt fails with `MIDL4034`.
 
-11. **midlrt's `/out` rejects a Unix path** with `MIDL1012: argument illegal for
+12. **midlrt's `/out` rejects a Unix path** with `MIDL1012: argument illegal for
 switch`. `gen-projection.sh` runs it from the destination directory instead.
     Its lexer also refuses a backtick anywhere in the file, comments included:
     `MIDL2025: Illegal character (0x60)`.
 
-12. **cppwinrt.exe and the `winrt/` headers must be the same version.** The
+13. **cppwinrt.exe and the `winrt/` headers must be the same version.** The
     generated projection carries a `static_assert` on it, so the newest NuGet
     against xwin's headers fails every build with "Mismatched C++/WinRT
     headers". `fetch-sdk.sh` reads the version out of `base.h`.
 
-13. **makepri needs MSXML6, then only its 32-bit build survives.** Without MSXML:
+14. **makepri needs MSXML6, then only its 32-bit build survives.** Without MSXML:
     `PRI175: Initializing Indexer / Schema Validation Failed`. With it, the x64
     build page-faults inside MSXML while the x86 one works. Same `.pri` either
     way; `wine-tool.sh` picks the right one. It also reads the manifest strictly:
@@ -162,6 +177,7 @@ scripts/gen-projection.sh    .idl -> .winmd -> App.g.h + module.g.cpp + winrt/
 scripts/gen-resources.sh     a layout -> resources.pri
 scripts/build.sh             clang-cl + lld-link, with PCH and parallel compiles
 scripts/build-app.sh         all of the above: a project directory -> a layout
+include/msvc-compat.h        force-included: what clang needs that MSVC assumes
 examples/hello-winrt/        C++/WinRT console program that exercises real APIs
 examples/hello-uwp/          a UWP application in the shape that cross-compiles
 tests/run-tests.sh           everything checkable without downloading the SDK
@@ -177,10 +193,12 @@ in a commit.
 
 ## Next
 
-- **xllama itself** — the application this was built for. Its `.vcxproj` becomes
-  a source list, and the result gets compared against its official release with
-  `openappx inspect`. Its third-party DLLs (onnxruntime, DirectML) stay
-  precompiled: they are copied, not rebuilt.
+- **xllama itself** — the application this was built for. Its UWP translation
+  units already compile here **unmodified**, including the 3,700-line
+  `MainPage.cpp` and the ONNX Runtime bridge, given the NuGet include
+  directories via `-I`. What is left is a build: llama.cpp for this target, the
+  remaining 25 sources, and a link. Its third-party DLLs (onnxruntime, DirectML)
+  stay precompiled — they are copied, not rebuilt.
 - **A device that can actually launch a sideloaded app.** This one cannot — not
   even Microsoft Edge — so nothing built here has been seen to run. That needs
   different hardware, not a different package.

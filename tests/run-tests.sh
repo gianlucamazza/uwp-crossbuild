@@ -65,18 +65,32 @@ WINRT_EXPORT namespace winrt::Windows::AI::MachineLearning
 {
 }
 EOF
-# No namespace declaration: nothing to derive an alias from.
-echo "// just a comment" >"$tmp/base.h"
+# base.h forward-declares other namespaces near the top and sorts first, so a
+# script that trusts the first namespace it finds gives it the alias for
+# Windows.Foundation.h — and the real windows.foundation.h, the one holding
+# box_value, gets none. That reads as a missing function, not a bad symlink.
+cat >"$tmp/base.h" <<'EOF'
+WINRT_EXPORT namespace winrt::Windows::Foundation
+{
+}
+EOF
+cat >"$tmp/windows.foundation.h" <<'EOF'
+WINRT_EXPORT namespace winrt::Windows::Foundation
+{
+}
+EOF
 
 "$scripts/fix-header-case.sh" "$tmp" --canonical >/dev/null
+assert "a namespace only fixes its own file's casing" "base.h claimed the alias" \
+	is_link_to "$tmp/Windows.Foundation.h" windows.foundation.h
+assert "a header whose namespace is not its name gets no alias" "Base.h exists" \
+	test ! -e "$tmp/Base.h"
 assert "compound segments keep their casing" "no Windows.ApplicationModel.DataTransfer.h" \
 	test -L "$tmp/Windows.ApplicationModel.DataTransfer.h"
 assert "acronyms stay upper-case" "no Windows.AI.MachineLearning.h" \
 	test -L "$tmp/Windows.AI.MachineLearning.h"
 assert "the alias points at the real file" "wrong link target" \
 	is_link_to "$tmp/Windows.AI.MachineLearning.h" windows.ai.machinelearning.h
-assert "a header with no namespace gets no alias" "Base.h was created" \
-	test ! -e "$tmp/Base.h"
 
 # A wrong alias from an earlier version of this script must not survive.
 ln -s windows.ai.machinelearning.h "$tmp/Windows.Ai.Machinelearning.h"
@@ -129,6 +143,18 @@ rm -rf "$tmp"
 echo "wine-tool.sh"
 fails_with "an unknown tool is refused" "usage:" \
 	env UWP_SDK_ROOT=/nonexistent "$scripts/wine-tool.sh" notatool
+
+echo "msvc-compat.h"
+compat="$here/../include/msvc-compat.h"
+assert "the compat header exists" "build.sh force-includes it" test -f "$compat"
+# Order is the point: <version> defines __cpp_lib_coroutine, which winrt/base.h
+# tests before it includes <coroutine>. Undo that and IAsyncAction stops being a
+# coroutine, with an error that points at the application.
+assert "<version> comes before <windows.h>" "wrong order in msvc-compat.h" \
+	test "$(grep -n "include <version>" "$compat" | cut -d: -f1)" -lt \
+	"$(grep -n "include <windows.h>" "$compat" | cut -d: -f1)"
+assert "GetCurrentTime is undefined after windows.h" "no #undef GetCurrentTime" \
+	grep -q "^#undef GetCurrentTime" "$compat"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [[ $failed -eq 0 ]]
