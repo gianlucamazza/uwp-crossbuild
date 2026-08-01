@@ -142,6 +142,10 @@ fails_with "a source that does not exist is refused" "no such source file" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe "-I$tmp"
 fails_with "a flag with no value says so" "--out needs a value" \
 	"$scripts/build.sh" --out
+# `--out --uwp` would otherwise write a non-appcontainer executable to a file
+# literally named --uwp, deferring the failure to package refusal.
+fails_with "a flag given another flag as its value is refused" "not another flag" \
+	"$scripts/build.sh" --out --uwp "$tmp/a.cpp"
 fails_with "--jobs takes a positive integer" "--jobs must be a positive integer" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe --jobs 0 "$tmp/a.cpp"
 rm -rf "$tmp"

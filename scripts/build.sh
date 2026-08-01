@@ -42,19 +42,22 @@ die() {
 	exit 1
 }
 # A flag whose value is missing would otherwise fail on an unbound $2 under
-# `set -u`, naming the shell rather than the argument.
-value() { # value <flag> <argc>
+# `set -u`, naming the shell rather than the argument. A value that is itself
+# a flag — `--out --uwp` — would be taken literally, and the real failure
+# deferred to whatever is downstream of the misread pair.
+value() { # value <flag> <argc> [value]
 	[[ $2 -ge 2 ]] || die "$1 needs a value"
+	[[ "${3:-}" != --* ]] || die "$1 needs a value, not another flag: $3"
 }
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--out) value "$1" $# && out="$2" && shift 2 ;;
-	--pch) value "$1" $# && pch="$2" && shift 2 ;;
-	--jobs) value "$1" $# && jobs="$2" && shift 2 ;;
+	--out) value "$1" $# "${2:-}" && out="$2" && shift 2 ;;
+	--pch) value "$1" $# "${2:-}" && pch="$2" && shift 2 ;;
+	--jobs) value "$1" $# "${2:-}" && jobs="$2" && shift 2 ;;
 	--uwp) uwp=1 && shift ;;
-	-I | --include) value "$1" $# && include_dirs+=("/I$2") && shift 2 ;;
-	--link-arg) value "$1" $# && link_args+=("$2") && shift 2 ;;
+	-I | --include) value "$1" $# "${2:-}" && include_dirs+=("/I$2") && shift 2 ;;
+	--link-arg) value "$1" $# "${2:-}" && link_args+=("$2") && shift 2 ;;
 	--)
 		shift
 		extra=("$@")
