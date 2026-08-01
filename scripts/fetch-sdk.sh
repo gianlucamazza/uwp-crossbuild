@@ -35,9 +35,30 @@ die() {
 	exit 1
 }
 step() { printf '\n==> %s\n' "$*"; }
+# The comment block at the top of this file is the usage text.
+usage() {
+	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
+		"$(readlink -f "${BASH_SOURCE[0]}")"
+	exit 0
+}
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
+[[ $# -eq 0 ]] || die "fetch-sdk.sh takes no arguments; see UWP_* in --help"
+
+# Downloads to a temporary name and renames on success. Two failures otherwise
+# land in the cache and stay there: curl without --fail writes the server's
+# error page into the output file and exits 0, so an HTTP 404 leaves a
+# 200-byte "installer"; and an interrupted download leaves a truncated one that
+# every later run happily reuses.
+fetch() { # fetch <url> <destination>
+	[[ -f "$2" ]] && return 0
+	curl -sSL --fail -o "$2.part" "$1" ||
+		die "download failed: $1"
+	mv "$2.part" "$2"
+}
 
 command -v wine >/dev/null || die "wine is required"
 command -v 7z >/dev/null || die "7z (p7zip) is required"
+command -v curl >/dev/null || die "curl is required"
 
 # MAX_PATH: tools receive Windows paths, and anything past 260 characters is
 # silently truncated. Keep the cache shallow and fail early if it is not.
@@ -46,8 +67,7 @@ command -v 7z >/dev/null || die "7z (p7zip) is required"
 mkdir -p "$WORK" "$SDK_ROOT"
 
 step "Downloading the SDK web installer"
-[[ -f "$WORK/sdksetup.exe" ]] ||
-	curl -sSL -o "$WORK/sdksetup.exe" "$SDK_INSTALLER_URL"
+fetch "$SDK_INSTALLER_URL" "$WORK/sdksetup.exe"
 
 step "Fetching the SDK layout (~1.1 GB, cached in $WORK/layout)"
 if [[ ! -d "$WORK/layout/Installers" ]]; then
@@ -115,9 +135,16 @@ if [[ -z "$CPPWINRT_VERSION" ]]; then
 fi
 echo "  version $CPPWINRT_VERSION (must match the winrt/ headers)"
 if [[ ! -f "$SDK_ROOT/cppwinrt/bin/cppwinrt.exe" ]]; then
-	curl -sSL -o "$WORK/cppwinrt.nupkg" \
-		"https://www.nuget.org/api/v2/package/Microsoft.Windows.CppWinRT/$CPPWINRT_VERSION"
-	7z x -y -o"$SDK_ROOT/cppwinrt" "$WORK/cppwinrt.nupkg" "bin/cppwinrt.exe" >/dev/null
+	# Versioned, so a cached package can only be this version — but a version
+	# that does not exist on NuGet answers 404, which without --fail would be
+	# saved as the package and fail later inside 7z.
+	rm -f "$WORK/cppwinrt.nupkg"
+	fetch "https://www.nuget.org/api/v2/package/Microsoft.Windows.CppWinRT/$CPPWINRT_VERSION" \
+		"$WORK/cppwinrt.nupkg"
+	7z x -y -o"$SDK_ROOT/cppwinrt" "$WORK/cppwinrt.nupkg" "bin/cppwinrt.exe" >/dev/null ||
+		die "no bin/cppwinrt.exe in the NuGet package for $CPPWINRT_VERSION"
+	[[ -f "$SDK_ROOT/cppwinrt/bin/cppwinrt.exe" ]] ||
+		die "extracting cppwinrt.exe produced nothing — is $WORK/cppwinrt.nupkg complete?"
 fi
 
 step "Checking MSXML6, which makepri needs"

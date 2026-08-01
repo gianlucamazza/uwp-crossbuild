@@ -38,7 +38,13 @@ around each. That framing decides most questions:
   reasoning next to the code and the summary in the README.
 - **Say which version you observed.** `midlrt` shelling out to `cl.exe` is true
   of SDK 10.0.22621; MSXML6 faulting under Wine is true of Wine 11.14. A
-  workaround with no version attached cannot ever be retired.
+  workaround with no version attached cannot ever be retired. The monthly
+  `full-build` run exists to find out when one has been: it builds without the
+  SDK cache, so it exercises the download too.
+- **Four versions are pinned by hand**, because dependabot watches the actions
+  and nothing else: `XWIN_VERSION` and `SHFMT_VERSION` in `ci.yml`,
+  `UWP_SDK_VERSION` with its installer URL in `fetch-sdk.sh`, and
+  `CPPWINRT_FALLBACK` — used only when xwin's headers are not there to be read.
 - **Nothing from Microsoft is redistributed.** `fetch-sdk.sh` and `xwin`
   download at run time under the SDK licence. Do not commit the result, do not
   cache it in an artefact store, do not check in a `.winmd` or a `.pri`.

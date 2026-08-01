@@ -24,9 +24,17 @@ die() {
 value() { # value <flag> <argc>
 	[[ $2 -ge 2 ]] || die "$1 needs a value"
 }
+# The comment block at the top of this file is the usage text. Printing it back
+# means there is one description of the flags, not two that drift apart.
+usage() {
+	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
+		"$(readlink -f "${BASH_SOURCE[0]}")"
+	exit 0
+}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
+	-h | --help) usage ;;
 	--layout) value "$1" $# && layout="$2" && shift 2 ;;
 	--language) value "$1" $# && language="$2" && shift 2 ;;
 	*) die "unknown argument $1" ;;
@@ -56,4 +64,9 @@ rm -f "$layout/resources.pri"
 	/Overwrite >/dev/null
 
 [[ -f "$layout/resources.pri" ]] || die "makepri produced no resources.pri"
-printf 'resources.pri: %s bytes\n' "$(stat -c%s "$layout/resources.pri")"
+# makepri can exit 0 having written an empty file when the indexer finds nothing
+# it recognises. Nothing here can validate the contents — that needs the loader
+# on a device — but an empty .pri is certainly wrong, and it installs.
+size="$(stat -c%s "$layout/resources.pri")"
+[[ $size -gt 0 ]] || die "makepri wrote an empty resources.pri from $layout"
+printf 'resources.pri: %s bytes\n' "$size"

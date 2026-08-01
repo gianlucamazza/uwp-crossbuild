@@ -10,9 +10,21 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Every workaround here is tied to a version of LLVM, Wine, xwin or the SDK,
+  # and all four move underneath this repository without a commit. A monthly
+  # full build is the only thing that notices — either that one has broken, or
+  # that one has been fixed and the workaround can go.
+  schedule:
+    - cron: "0 4 1 * *"
 
 permissions:
   contents: read
+
+env:
+  # Pinned here rather than in the steps: dependabot watches the actions, not
+  # these, so a human bumps them and should only have to look in one place.
+  XWIN_VERSION: "0.9.0"
+  SHFMT_VERSION: "3.12.0"
 
 jobs:
   scripts:
@@ -28,8 +40,9 @@ jobs:
 
       - name: shfmt
         run: |
-          curl -sSL -o /tmp/shfmt \
-            https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64
+          # --fail, or a 404 is saved as the binary and runs as garbage.
+          curl -sSL --fail -o /tmp/shfmt \
+            "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64"
           chmod +x /tmp/shfmt
           /tmp/shfmt -d scripts/*.sh tests/*.sh packaging/*.sh
 
@@ -74,9 +87,11 @@ jobs:
           done
 
   full-build:
-    # The real thing: SDK, CRT, and a UWP application compiled end to end.
-    # Manual, because it is a 1.1 GB download and ~10 minutes.
-    if: github.event_name == 'workflow_dispatch'
+    # The real thing: SDK, CRT, and a UWP application compiled end to end. Not
+    # on every push — it is a 1.1 GB download and ~10 minutes — but on request
+    # and once a month, because the toolchain moves and this repository is a
+    # record of how it behaves.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -89,6 +104,10 @@ jobs:
             clang lld wine wine64 winetricks p7zip-full
 
       - name: Cache the SDK
+        # Not on the scheduled run: that one exists to find out whether the
+        # download path still works, and a cache hit is exactly what would hide
+        # Microsoft moving the installer or changing the layout.
+        if: github.event_name != 'schedule'
         uses: actions/cache@v4
         with:
           path: ~/.cache/uwp-crossbuild
@@ -102,7 +121,12 @@ jobs:
         # headers to pin cppwinrt.exe. The other order leaves it guessing, and a
         # mismatch fails every build on a static_assert.
         run: |
-          curl -sSL https://github.com/Jake-Shadle/xwin/releases/download/0.9.0/xwin-0.9.0-x86_64-unknown-linux-musl.tar.gz \
+          # --fail, or a 404 arrives as a tarball tar cannot read, blaming tar.
+          # pipefail because the default shell here does not set it, and curl is
+          # not the last command in the pipe.
+          set -o pipefail
+          curl -sSL --fail \
+            "https://github.com/Jake-Shadle/xwin/releases/download/${XWIN_VERSION}/xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
             | tar xz -C /tmp --strip-components=1
           /tmp/xwin --accept-license --arch x86_64 splat --output ~/.cache/uwp-crossbuild/xwin
           scripts/fix-header-case.sh ~/.cache/uwp-crossbuild/xwin/sdk/include/cppwinrt/winrt --canonical
