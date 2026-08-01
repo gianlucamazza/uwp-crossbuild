@@ -6,8 +6,8 @@
 > **Status: a UWP application built here installs on a console.**
 > `examples/hello-uwp` goes from `.idl` to a signed `.msix` without touching
 > Windows — metadata, projection, an app-container PE, `resources.pri` — and an
-> Xbox One dev kit accepted it. It does not _launch_: see
-> [Known limits](#known-limits).
+> Xbox One dev kit accepted it. Nothing built here has been seen to _run_, for a
+> reason that is not about the build: see [Known limits](#known-limits).
 
 ## Quick start
 
@@ -36,6 +36,7 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 | `.winmd` → projection headers | `cppwinrt.exe` under Wine                             | ✅ `App.g.h`+`module.g.cpp`    |
 | resources → `resources.pri`   | `makepri.exe` (32-bit) under Wine                     | ✅ (optional — see below)      |
 | App-container executable      | `lld-link /appcontainer`                              | ✅ `DllCharacteristics` 0x1000 |
+| An unmodified VS source tree  | `include/msvc-compat.h`, force-included               | ✅ xllama's UWP sources build  |
 | Package, sign, deploy         | [openappx](https://github.com/gianlucamazza/openappx) | ✅ installed on an Xbox        |
 
 ## Known limits
@@ -95,11 +96,11 @@ this is the record of why they exist.
    vcxproj specifies `stdcpp17`.)_
 
 2. **Projection header casing cannot be guessed.** `#include
-   <winrt/Windows.ApplicationModel.Activation.h>` meets a file named
+<winrt/Windows.ApplicationModel.Activation.h>` meets a file named
    `windows.applicationmodel.activation.h`, and capitalising each segment gives
    `Applicationmodel`. `fix-header-case.sh --canonical` reads the namespace out
    of each header instead, where it is spelled correctly — but only to fix
-   *that* file's own casing. Let a header claim any namespace it declares and
+   _that_ file's own casing. Let a header claim any namespace it declares and
    `base.h`, which forward-declares half of them and sorts first, takes
    `Windows.Foundation.h` for itself. The real one holds `box_value`, so the
    symptom is a missing function.
@@ -117,7 +118,7 @@ this is the record of why they exist.
    header stops parsing. The error blames the header.
 
 6. **An STL header must precede `winrt/base.h`.** base.h enables coroutines with
-   `#ifdef __cpp_lib_coroutine` *before* including `<coroutine>`. Under MSVC the
+   `#ifdef __cpp_lib_coroutine` _before_ including `<coroutine>`. Under MSVC the
    macro is already there from whichever STL header came first; a `pch.h`
    opening with `<windows.h>` leaves clang without it, and coroutine support
    compiles out silently. An ordinary `IAsyncAction` is then reported as "this
@@ -141,8 +142,8 @@ preprocessor`. Pass `/no_cpp`; a normal UWP `.idl` has no directives.
    `fix-header-case.sh --lower` handles the include directories.
 
 10. **MAX_PATH, silently.** A `.winmd` path over 260 characters arrives truncated
-   — `...UniversalApiContract.w?` — and is rejected as "not a winmd". Nothing
-   mentions length. Build from a short directory.
+    — `...UniversalApiContract.w?` — and is rejected as "not a winmd". Nothing
+    mentions length. Build from a short directory.
 
 11. **`Windows.winmd` ships in its own MSI** (_Windows SDK Facade Windows WinMD
     Versioned_), separate from the tools and the contracts. Without
