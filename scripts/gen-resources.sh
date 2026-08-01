@@ -15,23 +15,33 @@ here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 layout=""
 language="en-US"
-while [[ $# -gt 0 ]]; do
-	case "$1" in
-	--layout) layout="$2" && shift 2 ;;
-	--language) language="$2" && shift 2 ;;
-	*) echo "error: unknown argument $1" >&2 && exit 1 ;;
-	esac
-done
-
 die() {
 	echo "error: $*" >&2
 	exit 1
 }
+# A flag whose value is missing would otherwise fail on an unbound $2 under
+# `set -u`, naming the shell rather than the argument.
+value() { # value <flag> <argc>
+	[[ $2 -ge 2 ]] || die "$1 needs a value"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--layout) value "$1" $# && layout="$2" && shift 2 ;;
+	--language) value "$1" $# && language="$2" && shift 2 ;;
+	*) die "unknown argument $1" ;;
+	esac
+done
+
 [[ -n "$layout" ]] || die "--layout is required"
 [[ -f "$layout/AppxManifest.xml" ]] || die "no AppxManifest.xml in $layout"
 
 layout="$(cd "$layout" && pwd)"
-config="$(mktemp -d)/priconfig.xml"
+# makepri writes its config somewhere it can also read back through Wine; the
+# layout is not that place — anything left in there ships inside the package.
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+config="$work/priconfig.xml"
 
 # makepri refuses to index a directory that already holds its own output.
 rm -f "$layout/resources.pri"

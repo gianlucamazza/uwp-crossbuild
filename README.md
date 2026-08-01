@@ -3,11 +3,15 @@
 **Compile C++/WinRT for Windows, from Linux.** Companion to
 [openappx](https://github.com/gianlucamazza/openappx), which packages, signs and deploys the result.
 
-> **Status: a UWP application built here installs on a console.**
-> `examples/hello-uwp` goes from `.idl` to a signed `.msix` without touching
-> Windows — metadata, projection, an app-container PE, `resources.pri` — and an
-> Xbox One dev kit accepted it. Nothing built here has been seen to _run_, for a
-> reason that is not about the build: see [Known limits](#known-limits).
+> **Status: a real application built here installs on a console.** Not just the
+> example — an existing UWP project of 216 translation units, a large
+> third-party inference library among them, compiled and linked from its own
+> `.vcxproj` files **without changing a line of its source**, then packed,
+> signed and installed on an Xbox One dev kit.
+> [docs/porting-a-vcxproj.md](docs/porting-a-vcxproj.md) is the recipe.
+>
+> Nothing built here has been seen to _run_, for a reason that is not about the
+> build: see [Known limits](#known-limits).
 
 ## Install
 
@@ -34,9 +38,11 @@ installation at all.
 
 ```bash
 scripts/check-deps.sh                                  # what is missing, before downloading
-scripts/fetch-sdk.sh                                   # SDK tools, ~1.1 GB, cached
+# xwin comes first: fetch-sdk.sh reads the C++/WinRT version out of the headers
+# it installs, and pinning cppwinrt.exe to anything else fails every build.
 xwin --accept-license --arch x86_64 splat --output ~/.cache/uwp-crossbuild/xwin
 scripts/fix-header-case.sh ~/.cache/uwp-crossbuild/xwin/sdk/include/cppwinrt/winrt --canonical
+scripts/fetch-sdk.sh                                   # SDK tools, ~1.1 GB, cached
 
 # a console program, to check the toolchain end to end
 scripts/build.sh --out hello.exe examples/hello-winrt/app.cpp
@@ -57,7 +63,8 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 | `.winmd` → projection headers | `cppwinrt.exe` under Wine                             | ✅ `App.g.h`+`module.g.cpp`    |
 | resources → `resources.pri`   | `makepri.exe` (32-bit) under Wine                     | ✅ (optional — see below)      |
 | App-container executable      | `lld-link /appcontainer`                              | ✅ `DllCharacteristics` 0x1000 |
-| An unmodified VS source tree  | `include/msvc-compat.h`, force-included               | ✅ xllama's UWP sources build  |
+| An unmodified VS source tree  | `include/msvc-compat.h`, force-included               | ✅ 216/216 of a real project   |
+| Link a whole application      | `lld-link`                                            | ✅ 7.5 MB PE32+                |
 | Package, sign, deploy         | [openappx](https://github.com/gianlucamazza/openappx) | ✅ installed on an Xbox        |
 
 ## Known limits
@@ -99,6 +106,7 @@ precompiled header is ~190 MB and is reused until the header itself changes.
 | `winetricks` → `msxml6`                       | makepri validates its schema through MSXML | 20260125      |
 | [`xwin`](https://github.com/Jake-Shadle/xwin) | CRT and SDK headers/libraries              | 0.9.0         |
 | `p7zip`, `curl`                               | unpacking the NuGet and SDK payloads       | —             |
+| `python3`                                     | `fix-header-case.sh --canonical`           | 3.14          |
 
 Nothing from Microsoft is redistributed: both `fetch-sdk.sh` and `xwin` download
 from Microsoft's CDN at run time under the SDK licence. CI must re-run them
@@ -113,8 +121,8 @@ this is the record of why they exist.
 
 1. **`/std:c++17` cannot work.** C++/WinRT falls back to
    `<experimental/coroutine>`, whose first line is an `#error` refusing clang.
-   Use `/std:c++20`, where `<coroutine>` is standard. _(Note for xllama: its
-   vcxproj specifies `stdcpp17`.)_
+   Use `/std:c++20`, where `<coroutine>` is standard. A `.vcxproj` saying
+   `<LanguageStandard>stdcpp17` has to be overridden, not honoured.
 
 2. **Projection header casing cannot be guessed.** `#include
 <winrt/Windows.ApplicationModel.Activation.h>` meets a file named
@@ -206,12 +214,19 @@ packaging/publish-aur.sh     update and publish it, by hand or from CI
 examples/hello-winrt/        C++/WinRT console program that exercises real APIs
 examples/hello-uwp/          a UWP application in the shape that cross-compiles
 tests/run-tests.sh           everything checkable without downloading the SDK
+docs/porting-a-vcxproj.md    taking a real Visual Studio project through all of it
 ```
 
 ## Releasing
 
+The CHANGELOG's newest version and `packaging/PKGBUILD`'s `pkgver` have to
+agree — CI checks it — so both move in the same commit, before the tag:
+
 ```bash
-git tag -a v0.1.1 -m "…" && git push origin v0.1.1
+# 1. CHANGELOG.md: close the section, date it
+# 2. packaging/PKGBUILD: pkgver=0.1.1, then `makepkg --printsrcinfo > .SRCINFO`
+git commit -am "Release 0.1.1"
+git tag -a v0.1.1 -m "…" && git push origin main v0.1.1
 ```
 
 `aur.yml` then updates the AUR package by running `packaging/publish-aur.sh`,
@@ -224,9 +239,16 @@ packaging/publish-aur.sh --version 0.1.1             # and push to the AUR
 
 It rewrites `pkgver`, downloads the release tarball to compute its checksum,
 regenerates `.SRCINFO` and builds the package with its tests before pushing, so
-a hand-edited checksum can never describe a different tarball. Without the
-`AUR_SSH_KEY` secret the workflow does a dry run instead of failing — a release
-should not go red because a downstream package is not set up yet.
+a hand-edited checksum can never describe a different tarball. That is also why
+`sha256sums` reads `SKIP` in this repository between releases: the tarball for
+the next version does not exist yet, a checksum kept from the previous one would
+describe the wrong file, and the script refuses to publish while it still says
+SKIP. The published AUR package always carries a real one. Only a local run
+copies the result back into `packaging/`; after a tag-triggered publication the
+files here stay as committed.
+
+Without the `AUR_SSH_KEY` secret the workflow does a dry run instead of failing —
+a release should not go red because a downstream package is not set up yet.
 
 ## Licensing
 
@@ -238,12 +260,10 @@ in a commit.
 
 ## Next
 
-- **xllama itself** — the application this was built for. Its UWP translation
-  units already compile here **unmodified**, including the 3,700-line
-  `MainPage.cpp` and the ONNX Runtime bridge, given the NuGet include
-  directories via `-I`. What is left is a build: llama.cpp for this target, the
-  remaining 25 sources, and a link. Its third-party DLLs (onnxruntime, DirectML)
-  stay precompiled — they are copied, not rebuilt.
+- **A `build-project.sh`** that reads a `.vcxproj` the way
+  [docs/porting-a-vcxproj.md](docs/porting-a-vcxproj.md) does by hand. Nothing
+  in that recipe is hard; it is just not automated, and the source list has to
+  come from the project rather than from a person.
 - **A device that can actually launch a sideloaded app.** This one cannot — not
   even Microsoft Edge — so nothing built here has been seen to run. That needs
   different hardware, not a different package.

@@ -13,7 +13,6 @@
 set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
-repo="$(cd "$here/.." && pwd)"
 
 PKGNAME="${AUR_PKGNAME:-uwp-crossbuild}"
 AUR_HOST="${AUR_HOST:-aur@aur.archlinux.org}"
@@ -21,20 +20,25 @@ AUR_HOST="${AUR_HOST:-aur@aur.archlinux.org}"
 version=""
 dry_run=0
 push=1
-while [[ $# -gt 0 ]]; do
-	case "$1" in
-	--version) version="$2" && shift 2 ;;
-	--dry-run) dry_run=1 && shift ;;
-	--no-push) push=0 && shift ;;
-	*) echo "error: unknown argument $1" >&2 && exit 2 ;;
-	esac
-done
-
 die() {
 	echo "error: $*" >&2
 	exit 1
 }
 step() { printf '\n==> %s\n' "$*"; }
+# A flag whose value is missing would otherwise fail on an unbound $2 under
+# `set -u`, naming the shell rather than the argument.
+value() { # value <flag> <argc>
+	[[ $2 -ge 2 ]] || die "$1 needs a value"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--version) value "$1" $# && version="$2" && shift 2 ;;
+	--dry-run) dry_run=1 && shift ;;
+	--no-push) push=0 && shift ;;
+	*) die "unknown argument $1" ;;
+	esac
+done
 
 [[ -n "$version" ]] || die "--version is required (e.g. --version 0.1.0)"
 [[ "$version" =~ ^[0-9]+(\.[0-9]+)*$ ]] || die "not a version: $version"
@@ -60,6 +64,11 @@ if command -v updpkgsums >/dev/null; then
 else
 	die "updpkgsums not found (pacman-contrib)"
 fi
+# The PKGBUILD in the repository carries SKIP between releases, because the
+# tarball for the next version does not exist yet. Publishing that would ship an
+# unverified package.
+grep -q "^sha256sums=('SKIP')" PKGBUILD &&
+	die "updpkgsums left sha256sums=SKIP — is v$version tagged and its tarball published?"
 
 step "Regenerating .SRCINFO"
 makepkg --printsrcinfo >.SRCINFO
@@ -105,5 +114,3 @@ git -c user.name="${GIT_AUTHOR_NAME:-Gianluca Mazza}" \
 git push -q origin HEAD:master
 step "Published $PKGNAME $version to the AUR"
 echo "  https://aur.archlinux.org/packages/$PKGNAME"
-
-cd "$repo"

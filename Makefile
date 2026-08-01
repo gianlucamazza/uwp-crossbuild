@@ -32,6 +32,7 @@ install:
 	install -m 0755 $(addprefix scripts/,$(SCRIPTS)) $(DESTDIR)$(LIBDIR)/scripts/
 	install -m 0644 include/msvc-compat.h $(DESTDIR)$(LIBDIR)/include/
 	install -m 0644 README.md CHANGELOG.md LICENSE $(DESTDIR)$(DOCDIR)/
+	install -m 0644 docs/*.md $(DESTDIR)$(DOCDIR)/
 	@set -e; for s in $(SCRIPTS); do \
 		ln -sf $(LIBDIR)/scripts/$$s $(DESTDIR)$(BINDIR)/uwp-$${s%.sh}; \
 	done
@@ -45,7 +46,16 @@ uninstall:
 check: lint
 	tests/run-tests.sh
 
+# Every bash file in the tree, packaging included: publish-aur.sh pushes to the
+# AUR, which is no place for the one script nothing checks.
+SHELL_FILES := scripts/*.sh tests/*.sh packaging/*.sh
+
 lint:
-	shellcheck scripts/*.sh tests/*.sh
-	@command -v shfmt >/dev/null && shfmt -d scripts/*.sh tests/*.sh || \
-		echo "shfmt not installed, skipping format check"
+	shellcheck $(SHELL_FILES)
+	@# `cmd -v shfmt && shfmt -d ... || echo` would report a *diff* as "not
+	@# installed" and exit 0, so make check passed on unformatted scripts.
+	@if command -v shfmt >/dev/null; then \
+		shfmt -d $(SHELL_FILES); \
+	else \
+		echo "shfmt not installed, skipping format check"; \
+	fi

@@ -26,20 +26,26 @@ idl=""
 name=""
 out=""
 stubs=""
-while [[ $# -gt 0 ]]; do
-	case "$1" in
-	--idl) idl="$2" && shift 2 ;;
-	--name) name="$2" && shift 2 ;;
-	--out) out="$2" && shift 2 ;;
-	--stubs) stubs="$2" && shift 2 ;;
-	*) echo "error: unknown argument $1" >&2 && exit 1 ;;
-	esac
-done
-
 die() {
 	echo "error: $*" >&2
 	exit 1
 }
+# A flag whose value is missing would otherwise fail on an unbound $2 under
+# `set -u`, naming the shell rather than the argument.
+value() { # value <flag> <argc>
+	[[ $2 -ge 2 ]] || die "$1 needs a value"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--idl) value "$1" $# && idl="$2" && shift 2 ;;
+	--name) value "$1" $# && name="$2" && shift 2 ;;
+	--out) value "$1" $# && out="$2" && shift 2 ;;
+	--stubs) value "$1" $# && stubs="$2" && shift 2 ;;
+	*) die "unknown argument $1" ;;
+	esac
+done
+
 [[ -n "$idl" && -n "$name" && -n "$out" ]] || die "--idl, --name and --out are required"
 [[ -f "$idl" ]] || die "no such file: $idl"
 [[ -d "$UNION" ]] || die "no platform metadata at $UNION — run fetch-sdk.sh"
@@ -48,6 +54,13 @@ mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 stubs="${stubs:-$out/stubs}"
 idl="$(cd "$(dirname "$idl")" && pwd)/$(basename "$idl")"
+
+# Wine truncates a path past MAX_PATH without saying so: midlrt then reports the
+# result as "not a winmd", and cppwinrt as a missing input. The tools are given
+# paths under $out, so check it here rather than let either failure be diagnosed
+# as a broken SDK. 200 leaves room for winrt/Windows.ApplicationModel.…h.
+[[ ${#out} -lt 200 ]] || die "--out is too long for Windows MAX_PATH (${#out} chars): $out
+  Build from a short directory, e.g. /tmp/build, or symlink one."
 
 # midlrt writes its output next to the current directory and rejects /out with a
 # Unix path (MIDL1012), so run it from the destination instead.

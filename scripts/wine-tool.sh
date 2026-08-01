@@ -46,7 +46,18 @@ check_path_length() {
 
 win() { winepath -w "$1"; }
 
+# A missing tool otherwise surfaces as whatever Wine says about an executable it
+# cannot find, which names neither the SDK version nor the script that installs
+# it. $KITS existing is not enough: the tools live under a version directory, and
+# UWP_SDK_VERSION can disagree with what was actually extracted.
+need_tool() { # need_tool <path>
+	[[ -f "$1" ]] || die "not found: $1
+  Run scripts/fetch-sdk.sh, or set UWP_SDK_VERSION to the SDK you have
+  (present: $(cd "$KITS/bin" 2>/dev/null && echo *))."
+}
+
 run_midlrt() {
+	need_tool "$BIN_X64/midlrt.exe"
 	check_path_length "$UNION"
 	local args=(
 		/winrt /nomidl
@@ -69,6 +80,7 @@ run_midlrt() {
 run_makepri() {
 	# The x64 build faults inside MSXML6 under Wine; the x86 build works with the
 	# 32-bit msxml6 winetricks installs. Same output either way.
+	need_tool "$BIN_X86/makepri.exe"
 	WINEDEBUG="${WINEDEBUG:--all}" exec wine "$BIN_X86/makepri.exe" "$@"
 }
 

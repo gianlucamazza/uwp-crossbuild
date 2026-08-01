@@ -37,14 +37,24 @@ sources=()
 extra=()
 link_args=()
 include_dirs=()
+die() {
+	echo "error: $*" >&2
+	exit 1
+}
+# A flag whose value is missing would otherwise fail on an unbound $2 under
+# `set -u`, naming the shell rather than the argument.
+value() { # value <flag> <argc>
+	[[ $2 -ge 2 ]] || die "$1 needs a value"
+}
+
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-	--out) out="$2" && shift 2 ;;
-	--pch) pch="$2" && shift 2 ;;
-	--jobs) jobs="$2" && shift 2 ;;
+	--out) value "$1" $# && out="$2" && shift 2 ;;
+	--pch) value "$1" $# && pch="$2" && shift 2 ;;
+	--jobs) value "$1" $# && jobs="$2" && shift 2 ;;
 	--uwp) uwp=1 && shift ;;
-	-I | --include) include_dirs+=("/I$2") && shift 2 ;;
-	--link-arg) link_args+=("$2") && shift 2 ;;
+	-I | --include) value "$1" $# && include_dirs+=("/I$2") && shift 2 ;;
+	--link-arg) value "$1" $# && link_args+=("$2") && shift 2 ;;
 	--)
 		shift
 		extra=("$@")
@@ -54,12 +64,16 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
 [[ -n "$out" ]] || die "--out is required"
+[[ "$jobs" =~ ^[1-9][0-9]*$ ]] || die "--jobs must be a positive integer, got: $jobs"
 [[ ${#sources[@]} -gt 0 ]] || die "no source files given"
+# Anything unrecognised is taken as a source, so a glued `-I/path` — the form
+# clang-cl itself accepts — would be handed to the compiler as a file. Check
+# here, where the error can say which argument was wrong.
+for src in "${sources[@]}"; do
+	[[ -f "$src" ]] || die "no such source file: $src
+  (include directories go through -I DIR or --include DIR, with a space)"
+done
 [[ -d "$XWIN_ROOT/crt/include" ]] || die "no CRT at $XWIN_ROOT — run fetch-sdk.sh"
 command -v clang-cl >/dev/null || die "clang-cl not found"
 
@@ -127,21 +141,34 @@ if [[ -n "$pch" ]]; then
 	pch_args=("/Yu$(basename "$pch")" "/Fp$pchfile")
 fi
 
+# Waits for every compile before reporting, so one broken source does not hide
+# the errors from the others — and so no compile is left running detached.
+wait_all() { # wait_all <pid...>
+	local p rc=0
+	for p in "$@"; do wait "$p" || rc=1; done
+	return "$rc"
+}
+
 objects=()
 pids=()
 for src in "${sources[@]}"; do
-	obj="$objdir/$(basename "${src%.*}").obj"
+	# Named after the whole path, not the basename: src/util.cpp and
+	# vendor/util.cpp would otherwise compile to the same object, in parallel,
+	# and the link would take whichever finished last without a word.
+	flat="${src%.*}"
+	flat="${flat#./}"
+	obj="$objdir/${flat//\//_}.obj"
 	objects+=("$obj")
 	clang-cl "${common[@]}" "${extra[@]}" "${pch_args[@]}" /c "$src" -o "$obj" &
 	pids+=($!)
 	# A plain `wait -n` loop would be neater but needs bash 4.3+ semantics that
 	# differ across the versions in the wild; batching is enough here.
-	if [[ ${#pids[@]} -ge $jobs ]]; then
-		for p in "${pids[@]}"; do wait "$p"; done
+	if [[ ${#pids[@]} -ge "$jobs" ]]; then
+		wait_all ${pids[@]+"${pids[@]}"} || die "compilation failed"
 		pids=()
 	fi
 done
-for p in "${pids[@]}"; do wait "$p"; done
+wait_all ${pids[@]+"${pids[@]}"} || die "compilation failed"
 
 [[ -n "$pch" ]] && objects+=("$objdir/pch.obj")
 

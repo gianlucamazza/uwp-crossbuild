@@ -21,17 +21,17 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Syntax
-        run: for f in scripts/*.sh tests/*.sh; do bash -n "$f"; done
+        run: for f in scripts/*.sh tests/*.sh packaging/*.sh; do bash -n "$f"; done
 
       - name: shellcheck
-        run: shellcheck scripts/*.sh tests/*.sh
+        run: shellcheck scripts/*.sh tests/*.sh packaging/*.sh
 
       - name: shfmt
         run: |
           curl -sSL -o /tmp/shfmt \
             https://github.com/mvdan/sh/releases/download/v3.12.0/shfmt_v3.12.0_linux_amd64
           chmod +x /tmp/shfmt
-          /tmp/shfmt -d scripts/*.sh tests/*.sh
+          /tmp/shfmt -d scripts/*.sh tests/*.sh packaging/*.sh
 
       - name: Tests
         run: tests/run-tests.sh
@@ -52,7 +52,9 @@ jobs:
           test -f /tmp/prefix/lib/uwp-crossbuild/include/msvc-compat.h
           cd "$GITHUB_WORKSPACE"
           make uninstall PREFIX=/tmp/prefix
-          test -z "$(find /tmp/prefix -type f)"
+          # -type l as well: what uninstall has to remove from bin/ *is* symlinks,
+          # and -type f alone would call a dangling one a clean uninstall.
+          test -z "$(find /tmp/prefix \( -type f -o -type l \))"
 
       - name: The PKGBUILD agrees with the tree
         run: |
@@ -67,7 +69,7 @@ jobs:
         # A script that loses its +x bit still works via `bash x.sh` and fails
         # for anyone following the README.
         run: |
-          for f in scripts/*.sh tests/*.sh; do
+          for f in scripts/*.sh tests/*.sh packaging/*.sh; do
             [ -x "$f" ] || { echo "not executable: $f"; exit 1; }
           done
 
@@ -95,23 +97,37 @@ jobs:
       - name: What is missing
         run: scripts/check-deps.sh || true
 
-      - name: SDK tools
-        run: |
-          winetricks -q msxml6
-          scripts/fetch-sdk.sh
-
       - name: CRT and SDK headers
+        # Before fetch-sdk.sh, which reads the C++/WinRT version out of these
+        # headers to pin cppwinrt.exe. The other order leaves it guessing, and a
+        # mismatch fails every build on a static_assert.
         run: |
           curl -sSL https://github.com/Jake-Shadle/xwin/releases/download/0.9.0/xwin-0.9.0-x86_64-unknown-linux-musl.tar.gz \
             | tar xz -C /tmp --strip-components=1
           /tmp/xwin --accept-license --arch x86_64 splat --output ~/.cache/uwp-crossbuild/xwin
           scripts/fix-header-case.sh ~/.cache/uwp-crossbuild/xwin/sdk/include/cppwinrt/winrt --canonical
 
+      - name: SDK tools
+        run: |
+          winetricks -q msxml6
+          scripts/fetch-sdk.sh
+
       - name: Build the console example
         run: scripts/build.sh --out /tmp/hello.exe examples/hello-winrt/app.cpp
 
       - name: Build the UWP example
         run: scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
+
+      - name: The layout holds only what ships
+        # Everything in a layout goes into the package, and makepri indexes it:
+        # a projection or an object left in there is shipped and described in
+        # resources.pri. The build directory beside it is where they belong.
+        run: |
+          unexpected=$(find /tmp/hello-layout \
+            \( -name '*.obj' -o -name '*.pch' -o -name '*.g.h' \
+               -o -name '*.g.cpp' -o -name 'gen' -o -name '.gen' \) -print)
+          [ -z "$unexpected" ] || { echo "not shippable: $unexpected"; exit 1; }
+          test -d /tmp/hello-layout.build/gen
 
       - name: The executable is linked for the app container
         # 0x1000 is IMAGE_DLLCHARACTERISTICS_APPCONTAINER. Without it a device

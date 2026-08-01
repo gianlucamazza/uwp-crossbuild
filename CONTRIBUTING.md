@@ -3,8 +3,15 @@
 ## Before opening a pull request
 
 ```bash
-shellcheck scripts/*.sh tests/*.sh
-shfmt -d scripts/*.sh tests/*.sh      # tabs, as shfmt writes them
+make check                            # shellcheck, shfmt and the tests
+```
+
+or, one at a time — `packaging/` included, because publish-aur.sh is a script
+like any other:
+
+```bash
+shellcheck scripts/*.sh tests/*.sh packaging/*.sh
+shfmt -d scripts/*.sh tests/*.sh packaging/*.sh   # tabs, as shfmt writes them
 tests/run-tests.sh
 ```
 
@@ -22,7 +29,7 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
 ## What this repository is
 
-A record of thirteen ways the Windows SDK fails on Linux, with a script wrapped
+A record of fourteen ways the Windows SDK fails on Linux, with a script wrapped
 around each. That framing decides most questions:
 
 - **Every workaround says which failure it avoids.** A flag whose purpose is not
@@ -50,7 +57,13 @@ the CHANGELOG rather than into a test that cannot run.
 
 - Scripts are bash with `set -euo pipefail`, formatted by `shfmt`.
 - A script that takes arguments validates them before doing any work, and its
-  error names the fix (`run fetch-sdk.sh`, `pass --name`).
+  error names the fix (`run fetch-sdk.sh`, `pass --name`). A flag declared to
+  take a value checks that it has one — `value "$1" $#` in every parser — rather
+  than failing on an unbound `$2`.
 - Generated files — `.winmd`, `.pri`, projection headers, objects, the
   precompiled header — never land in a package layout. They go in a build
-  directory beside it.
+  directory beside it: `makepri new` indexes everything under `/ProjectRoot`,
+  so anything left in a layout is both shipped and described in `resources.pri`.
+- Output that is only interesting when something fails still goes somewhere. A
+  tool run under Wine gets its output kept in a log and quoted on failure; it is
+  usually the only diagnosis there is.

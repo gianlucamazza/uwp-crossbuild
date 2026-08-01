@@ -63,6 +63,9 @@ jobs:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
           install -d -m 700 -o builder -g builder /home/builder/.ssh
+          # Created at 0600 before anything is written to it: `printf >` would
+          # make it with the default umask and only narrow it afterwards.
+          install -m 600 /dev/null /home/builder/.ssh/id_ed25519
           printf '%s\n' "$AUR_SSH_KEY" > /home/builder/.ssh/id_ed25519
           # Pinned rather than fetched: ssh-keyscan at run time would trust
           # whatever answers, which is the thing host keys exist to prevent.
@@ -73,7 +76,7 @@ jobs:
           aur.archlinux.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN
           EOF
           chown -R builder:builder /home/builder/.ssh
-          chmod 600 /home/builder/.ssh/id_ed25519 /home/builder/.ssh/known_hosts
+          chmod 600 /home/builder/.ssh/known_hosts
 
       - name: Publish
         env:

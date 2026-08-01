@@ -9,7 +9,8 @@ namespace hello {
 // A plain C++ class owning the visual tree — not a runtimeclass. Declaring it in
 // the .idl would drag in IXamlMetadataProvider and MarkupCompilePass2, which is
 // exactly the part of the UWP build that has no Linux equivalent. Building the
-// tree in code avoids all of it. xllama is structured the same way.
+// tree in code avoids all of it. Real applications that cross-compile are
+// structured this way for the same reason.
 class MainPage {
   public:
     MainPage();

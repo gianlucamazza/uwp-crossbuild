@@ -21,21 +21,26 @@ project=""
 out=""
 name=""
 no_pri=0
-while [[ $# -gt 0 ]]; do
-	case "$1" in
-	--project) project="$2" && shift 2 ;;
-	--out) out="$2" && shift 2 ;;
-	--name) name="$2" && shift 2 ;;
-	--no-pri) no_pri=1 && shift ;;
-	*) echo "error: unknown argument $1" >&2 && exit 1 ;;
-	esac
-done
-
 die() {
 	echo "error: $*" >&2
 	exit 1
 }
 step() { printf '\n==> %s\n' "$*"; }
+# A flag whose value is missing would otherwise fail on an unbound $2 under
+# `set -u`, naming the shell rather than the argument.
+value() { # value <flag> <argc>
+	[[ $2 -ge 2 ]] || die "$1 needs a value"
+}
+
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--project) value "$1" $# && project="$2" && shift 2 ;;
+	--out) value "$1" $# && out="$2" && shift 2 ;;
+	--name) value "$1" $# && name="$2" && shift 2 ;;
+	--no-pri) no_pri=1 && shift ;;
+	*) die "unknown argument $1" ;;
+	esac
+done
 
 [[ -n "$project" && -n "$out" ]] || die "--project and --out are required"
 [[ -f "$project/app.idl" ]] || die "no app.idl in $project"
@@ -49,7 +54,27 @@ fi
 
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
-gen="$out/.gen"
+[[ "$out" != "$project" && "$out" != "$project"/* ]] ||
+	die "--out must be outside --project: the layout is a build product, not a source"
+
+# A layout is the complete contents of a package, so anything left over from an
+# earlier build ships with it — a renamed executable, a winmd from a project
+# that used to be called something else. Clear it, but only once it is
+# recognisably a layout of ours: --out pointed somewhere unexpected should not
+# delete that directory's contents.
+if [[ -n "$(ls -A "$out")" ]]; then
+	[[ -f "$out/AppxManifest.xml" ]] ||
+		die "$out is not empty and holds no AppxManifest.xml — refusing to clear it"
+	find "$out" -mindepth 1 -delete
+fi
+
+# Everything generated — the projection, the objects, the ~190 MB precompiled
+# header — goes in a build directory *beside* the layout, never inside it.
+# Whatever is in the layout ends up in the package, and makepri indexes it: with
+# the projection under $out, resources.pri came out describing App.g.h and a
+# winmd that were deleted a moment later.
+build="${UWP_OBJ_DIR:-$out.build}"
+gen="$build/gen"
 rm -rf "$gen"
 
 step "Metadata and projection ($name.winmd)"
@@ -63,9 +88,7 @@ for f in "$project"/*.cpp; do [[ -f "$f" ]] && sources+=("$f"); done
 # ~1 s per translation unit.
 build_args=(--uwp --out "$out/$name.exe")
 [[ -f "$project/pch.h" ]] && build_args+=(--pch "$project/pch.h")
-# Objects and the ~190 MB precompiled header must stay outside the layout:
-# whatever is in there ends up in the package, and makepri indexes it too.
-UWP_OBJ_DIR="${UWP_OBJ_DIR:-$out.build}" \
+UWP_OBJ_DIR="$build/obj" \
 	"$here/build.sh" "${build_args[@]}" "${sources[@]}" -- /I"$gen" /I"$project"
 
 step "Assembling the layout"
@@ -79,6 +102,7 @@ if [[ $no_pri -eq 0 ]]; then
 	"$here/gen-resources.sh" --layout "$out"
 fi
 
-rm -rf "$gen"
 step "Layout ready: $out"
 ls -la "$out"
+echo
+echo "generated files (projection, objects, PCH) are in $build"

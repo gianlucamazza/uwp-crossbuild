@@ -14,6 +14,7 @@ set -uo pipefail
 # back at the real directory rather than at ~/.local/bin.
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 scripts="$here/../scripts"
+packaging="$here/../packaging"
 passed=0
 failed=0
 
@@ -115,10 +116,21 @@ fails_with "a missing directory is refused" "no such directory" \
 	"$scripts/fix-header-case.sh" /nonexistent-directory --lower
 
 echo "build.sh guards"
-fails_with "--out is required" "--out is required" "$scripts/build.sh" a.cpp
+tmp="$(mktemp -d)"
+touch "$tmp/a.cpp"
+fails_with "--out is required" "--out is required" "$scripts/build.sh" "$tmp/a.cpp"
 fails_with "sources are required" "no source files" "$scripts/build.sh" --out a.exe
-UWP_XWIN_ROOT=/nonexistent fails_with "a missing CRT names fetch-sdk.sh" "run fetch-sdk.sh" \
-	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe a.cpp
+fails_with "a missing CRT names fetch-sdk.sh" "run fetch-sdk.sh" \
+	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe "$tmp/a.cpp"
+# Unrecognised arguments become sources, so a glued -I/path would reach clang-cl
+# as a file. The error has to name the argument, not the compiler.
+fails_with "a source that does not exist is refused" "no such source file" \
+	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe "-I$tmp"
+fails_with "a flag with no value says so" "--out needs a value" \
+	"$scripts/build.sh" --out
+fails_with "--jobs takes a positive integer" "--jobs must be a positive integer" \
+	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe --jobs 0 "$tmp/a.cpp"
+rm -rf "$tmp"
 
 echo "build-app.sh guards"
 tmp="$(mktemp -d)"
@@ -134,10 +146,26 @@ fails_with "a project without a manifest is refused" "no AppxManifest.xml" \
 echo '<Package><Applications><Application Id="x"/></Applications></Package>' >"$tmp/AppxManifest.xml"
 fails_with "a manifest with no Executable asks for --name" "pass --name" \
 	"$scripts/build-app.sh" --project "$tmp" --out "$tmp/out"
-rm -rf "$tmp"
+# The layout is the package's contents: generated files inside it get shipped and
+# indexed into resources.pri, so --out cannot be the project or live under it.
+echo '<Package><Applications><Application Id="x" Executable="hello.exe"/></Applications></Package>' \
+	>"$tmp/AppxManifest.xml"
+fails_with "--out inside --project is refused" "must be outside --project" \
+	"$scripts/build-app.sh" --project "$tmp" --out "$tmp/inside"
+# A directory that is not recognisably a layout is never cleared, whatever
+# --out was pointed at.
+elsewhere="$(mktemp -d)"
+touch "$elsewhere/precious"
+fails_with "a non-empty --out with no manifest is not cleared" "refusing to clear it" \
+	"$scripts/build-app.sh" --project "$tmp" --out "$elsewhere"
+assert "the untouched directory kept its contents" "the file was deleted" \
+	test -f "$elsewhere/precious"
+rm -rf "$tmp" "$elsewhere"
 
 echo "gen-projection.sh and gen-resources.sh guards"
 fails_with "gen-projection needs its arguments" "are required" "$scripts/gen-projection.sh"
+fails_with "gen-projection reports a flag with no value" "--idl needs a value" \
+	"$scripts/gen-projection.sh" --idl
 tmp="$(mktemp -d)"
 fails_with "gen-resources needs a layout with a manifest" "no AppxManifest.xml" \
 	"$scripts/gen-resources.sh" --layout "$tmp"
@@ -146,6 +174,44 @@ rm -rf "$tmp"
 echo "wine-tool.sh"
 fails_with "an unknown tool is refused" "usage:" \
 	env UWP_SDK_ROOT=/nonexistent "$scripts/wine-tool.sh" notatool
+fails_with "a missing SDK names fetch-sdk.sh" "run scripts/fetch-sdk.sh" \
+	env UWP_SDK_ROOT=/nonexistent "$scripts/wine-tool.sh" midlrt /?
+# The SDK is there but the tools are not where UWP_SDK_VERSION says: without a
+# guard this is whatever Wine prints about a missing executable.
+tmp="$(mktemp -d)"
+mkdir -p "$tmp/Windows Kits/10/bin/10.0.99999.0"
+fails_with "an SDK without the tool for this version says which versions exist" \
+	"10.0.99999.0" \
+	env UWP_SDK_ROOT="$tmp" "$scripts/wine-tool.sh" midlrt /?
+rm -rf "$tmp"
+
+echo "publish-aur.sh guards"
+fails_with "a version is required" "--version is required" "$packaging/publish-aur.sh"
+fails_with "a version that is not one is refused" "not a version" \
+	"$packaging/publish-aur.sh" --version 0.1.0-rc1
+fails_with "an unknown argument is refused" "unknown argument" \
+	"$packaging/publish-aur.sh" --version 0.1.0 --publish-everything
+
+echo "gen-resources.sh leaves nothing behind"
+tmp="$(mktemp -d)"
+mkdir -p "$tmp/layout" "$tmp/tmpdir"
+touch "$tmp/layout/AppxManifest.xml"
+# makepri needs its config file somewhere outside the layout, so the script makes
+# a temporary directory. It has to go, whichever way the script exits.
+fails_with "a missing SDK is reported" "SDK not found" \
+	env TMPDIR="$tmp/tmpdir" UWP_SDK_ROOT=/nonexistent \
+	"$scripts/gen-resources.sh" --layout "$tmp/layout"
+assert "the temporary config directory is removed" "something is left in TMPDIR" \
+	test -z "$(ls -A "$tmp/tmpdir")"
+rm -rf "$tmp"
+
+echo "check-deps.sh"
+# PATH is emptied so nothing is actually probed: what is under test is the list
+# of prerequisites, not this machine. bash is called by path for the same reason.
+fails_with "python3 is a prerequisite, for fix-header-case --canonical" "python3" \
+	env PATH=/nonexistent "$BASH" "$scripts/check-deps.sh"
+fails_with "msxml6 counts as missing rather than exiting 0" "Missing:" \
+	env PATH=/nonexistent "$BASH" "$scripts/check-deps.sh"
 
 echo "msvc-compat.h"
 compat="$here/../include/msvc-compat.h"

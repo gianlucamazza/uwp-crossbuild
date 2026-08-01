@@ -7,21 +7,59 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
-## Unreleased
+## 0.1.1 — 2026-08-01
 
 ### Added
 
-- `make install` / `make uninstall`, and `packaging/PKGBUILD` for Arch. The
-  scripts install as a tree with `uwp-*` symlinks on PATH.
 - `packaging/publish-aur.sh` and `aur.yml`: the AUR package updates itself on a
   release tag, running the same script a maintainer runs by hand.
+- `build-app.sh` clears a stale layout before assembling a new one, and refuses
+  an `--out` inside `--project` or a non-empty directory that holds no
+  `AppxManifest.xml`. A layout is the package's contents: whatever survives from
+  an earlier build — an executable under a name the project no longer uses —
+  ships with it.
 
 ### Fixed
 
-- The scripts resolved `include/msvc-compat.h` and each other against
-  `${BASH_SOURCE[0]}` without following symlinks, so anything on PATH pointed at
-  the wrong directory and `build.sh` died. They could not have been packaged
-  before this.
+- **`build-app.sh` generated the projection into `$out/.gen`, inside the
+  layout.** makepri indexes what is under `/ProjectRoot`, so `resources.pri`
+  described `App.g.h`, `module.g.cpp` and a winmd that were deleted seconds
+  later. Everything generated now goes in the build directory beside the layout,
+  which is where the objects and the precompiled header already were.
+- **The documented order ran `fetch-sdk.sh` before `xwin`**, which is exactly
+  what stops `fetch-sdk.sh` reading the C++/WinRT version out of the headers:
+  the pin fell back to a hardcoded version every time, the case the version
+  detection exists to prevent. README and CI now run xwin first, and the script
+  says so when it has to guess.
+- **`make lint` reported a shfmt _diff_ as "shfmt not installed" and exited 0**
+  (`cmd -v shfmt && shfmt -d … || echo …`), so `make check` — which is what the
+  PKGBUILD runs — passed on unformatted scripts.
+- `packaging/publish-aur.sh` was the one bash file in the tree that nothing
+  checked: no shellcheck, no shfmt, no syntax pass, no tests. All four now cover
+  `packaging/*.sh`.
+- Sources sharing a basename in different directories compiled to the same
+  object, in parallel; the link took whichever finished last. Objects are named
+  after the whole path now.
+- A failed compile aborted at the first `wait`, hiding the other translation
+  units' errors and leaving their compilers running. All of them are waited for,
+  then the build stops with one message.
+- `wine-tool.sh` checks that midlrt and makepri exist for `UWP_SDK_VERSION`, and
+  lists the versions that are installed instead of leaving Wine to complain.
+- `fetch-sdk.sh` keeps msiexec's output in a log and quotes it on failure — it
+  was the only diagnosis available and went to `/dev/null` — and verifies that
+  the extracted SDK is the version it was asked for.
+- `build.sh` rejects a source file that does not exist, a flag with no value and
+  a non-numeric `--jobs`, instead of passing `-I/path` to clang-cl as a file or
+  failing on an unbound variable. Every script validates its flags the same way.
+- `check-deps.sh` reports `python3`, which `fix-header-case.sh --canonical`
+  needs, counts a missing MSXML6 as missing, and prints 7-Zip's version (it has
+  no `--version`, so the field was blank).
+- `gen-resources.sh` removes the temporary directory it creates for makepri's
+  config.
+- CI's uninstall check looked only for leftover files, and what `uninstall`
+  removes is symlinks.
+- `aur.yml` creates the private key file at 0600 rather than narrowing it after
+  writing the key into it.
 
 ## 0.1.0 — 2026-08-01
 
@@ -47,6 +85,8 @@ console installs, with no Windows anywhere.
   dependencies needs no bespoke wrapper.
 - `examples/hello-winrt` — a console program that drives real WinRT APIs.
 - `examples/hello-uwp` — a UWP application in the shape that cross-compiles.
+- `make install` / `make uninstall`, and `packaging/PKGBUILD` for Arch. The
+  scripts install as a tree with `uwp-*` symlinks on PATH.
 
 ### Established
 
@@ -59,13 +99,16 @@ console installs, with no Windows anywhere.
   file at runtime — untestable while launching is.
 - Precompiled headers turn ~30 s per translation unit into ~1 s. A rebuild of
   `hello-uwp` goes from 98 s to 1.3 s.
-- **xllama's own UWP sources compile here unmodified** — its 3,700-line
-  `MainPage.cpp`, its ONNX Runtime bridge, its `IAsyncAction` downloader — given
-  the NuGet include directories. Linking a whole application is still open:
-  llama.cpp has to be built for this target first.
+- **An existing project's UWP sources compile here unmodified** — a 3,700-line
+  page built in code, an ONNX Runtime bridge, an `IAsyncAction` downloader —
+  given its NuGet include directories.
 
 ### Fixed
 
+- The scripts resolved `include/msvc-compat.h` and each other against
+  `${BASH_SOURCE[0]}` without following symlinks, so anything on PATH pointed at
+  the wrong directory and `build.sh` died. They could not have been packaged
+  before this.
 - `fix-header-case.sh --canonical` reads each header's namespace instead of
   capitalising filename segments, which produced `Applicationmodel` and silently
   aliased nothing usable. It now uses that namespace only to fix the file's own

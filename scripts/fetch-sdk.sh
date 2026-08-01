@@ -59,10 +59,25 @@ step "Extracting the MSIs we need"
 for msi in "${MSIS[@]}"; do
 	[[ -f "$WORK/layout/Installers/$msi" ]] || die "missing from layout: $msi"
 	echo "  $msi"
+	# msiexec under Wine is noisy when it works and the only witness when it does
+	# not, so keep the output in a log rather than discarding it: without this a
+	# failure here has no diagnosis at all.
+	log="$WORK/msiexec-${msi// /_}.log"
 	WINEDEBUG=-all wine msiexec /a "$WORK/layout/Installers/$msi" /qn \
-		TARGETDIR="$(winepath -w "$SDK_ROOT")" >/dev/null 2>&1 ||
-		die "administrative install failed for $msi"
+		TARGETDIR="$(winepath -w "$SDK_ROOT")" >"$log" 2>&1 ||
+		die "administrative install failed for $msi
+$(tail -20 "$log")
+  full log: $log"
 done
+
+# An SDK version that does not match what the installer laid down produces no
+# error here — the symlink loop below just finds nothing and midlrt fails much
+# later, complaining about metadata. Say it now, and say which two settings
+# disagree.
+[[ -d "$SDK_ROOT/Windows Kits/10/bin/$SDK_VERSION" ]] ||
+	die "no SDK $SDK_VERSION under $SDK_ROOT after extraction.
+  Found: $(cd "$SDK_ROOT/Windows Kits/10/bin" 2>/dev/null && echo *)
+  UWP_SDK_VERSION and UWP_SDK_URL have to describe the same SDK."
 
 step "Adding lowercase symlinks for the includes"
 # midlrt asks for winrtbase.idl; the SDK ships WinRTBase.idl. On NTFS that is the
@@ -88,6 +103,13 @@ if [[ -z "$CPPWINRT_VERSION" ]]; then
 	base="$XWIN_ROOT/sdk/include/cppwinrt/winrt/base.h"
 	if [[ -f "$base" ]]; then
 		CPPWINRT_VERSION=$(sed -n 's/^#define CPPWINRT_VERSION "\(.*\)"/\1/p' "$base" | head -1)
+	else
+		# Reading the version out of the headers is the whole point, so say so
+		# rather than pin a guess silently: run xwin *before* this script, or the
+		# fallback below decides the version and every build can fail on the
+		# static_assert instead.
+		echo "  no xwin headers at $base — falling back to $CPPWINRT_FALLBACK" >&2
+		echo "  run xwin splat first, or set UWP_CPPWINRT_VERSION, if that is wrong" >&2
 	fi
 	CPPWINRT_VERSION="${CPPWINRT_VERSION:-$CPPWINRT_FALLBACK}"
 fi

@@ -8,13 +8,14 @@ That last point is the whole trick. A `.xaml` file would need the XAML compiler
 (MarkupCompilePass1/2), which has no Linux equivalent and does not run under
 Wine. Declaring `MainPage` as a runtimeclass would pull in
 `IXamlMetadataProvider` and land in the same place. Building the tree
-programmatically avoids both, and it is how xllama is written.
+programmatically avoids both, and it is how an application has to be written to
+cross-compile at all.
 
 ```bash
 scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
-# then, from the openappx checkout
-./scripts/pack.sh --root /tmp/hello-layout --out /tmp/hello.msix
+# then, with openappx (pip install openappx)
+openappx pack --root /tmp/hello-layout --out /tmp/hello.msix
 ```
 
 ## Files
@@ -28,8 +29,9 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 | `module.cpp`       | compiles `module.g.cpp`, the activation-factory aggregator     |
 | `AppxManifest.xml` | `EntryPoint="hello.App"`, resolved against the generated winmd |
 
-`App.g.h`, `module.g.cpp` and `hello.winmd` are generated into a scratch
-directory at build time and never committed.
+`App.g.h`, `module.g.cpp` and `hello.winmd` are generated at build time into
+`<out>.build/gen`, beside the layout and never inside it, and never committed.
+Only the winmd is copied into the layout, because the package needs it.
 
 ## Three things this example encodes
 
