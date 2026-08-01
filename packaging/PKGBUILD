@@ -5,20 +5,25 @@
 # cache — see the README. That is why there is no `source` beyond this
 # repository and no huge `package()`.
 pkgname=uwp-crossbuild
-pkgver=0.1.1
+pkgver=0.2.0
 pkgrel=1
 pkgdesc="Compile C++/WinRT UWP applications for Windows, from Linux"
 arch=('any')
 url="https://github.com/gianlucamazza/uwp-crossbuild"
 license=('MIT')
 # clang and lld do the compiling; wine runs midlrt, makepri and cppwinrt, none
-# of which have a Linux equivalent. p7zip and curl unpack what fetch-sdk.sh
-# downloads.
+# of which have a Linux equivalent. p7zip and curl unpack what fetch-sdk.sh and
+# restore-nuget.sh download. python runs fix-header-case.sh --canonical and
+# read-vcxproj.py.
 depends=('bash' 'clang' 'lld' 'wine' 'p7zip' 'curl' 'python')
 # xwin supplies the CRT and SDK headers. It is in the AUR, and the README
 # explains how to use a downloaded binary instead, so this stays optional.
+# llvm is here rather than in depends because only --static-lib needs llvm-lib,
+# which is to say only a project that references a StaticLibrary; build.sh
+# checks for it and names it before doing any work.
 optdepends=('winetricks: installs msxml6, which makepri needs'
-            'xwin: CRT and SDK headers and libraries')
+            'xwin: CRT and SDK headers and libraries'
+            'llvm: llvm-lib, for a project that references a static library')
 makedepends=('shellcheck')
 checkdepends=('shellcheck')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")

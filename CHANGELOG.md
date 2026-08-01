@@ -7,6 +7,63 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
+## 0.2.0 — 2026-08-01
+
+An existing Visual Studio project builds here without being described a second
+time: the `.vcxproj` is read, not reconstructed.
+
+### Added
+
+- **`scripts/read-vcxproj.py`** — enough MSBuild to say what a project builds:
+  properties with conditions and `Exists()`, per-configuration
+  `ItemDefinitionGroup`s, `%(Name)` continuations, `*` and `**` globs with
+  `Exclude`, NuGet `.props` imports, `ProjectReference`, `DeploymentContent`.
+  `--json` for all of it, `--field` for one line at a time, `--property` for
+  MSBuild's `/p:` — which matters more than it looks, because a project switch
+  can decide whether a `ProjectReference` exists at all.
+
+  **It refuses rather than guesses.** A compiler setting outside its mapping
+  table, a property only Visual Studio supplies, a target that generates files:
+  each stops the build by name. A build that silently differs from the one
+  MSBuild produces is worse than no build — the difference does not surface
+  until the link, or until the application misbehaves on a device.
+
+  It also checks what nobody else does: that the executable the manifest starts
+  is the one the project builds. They can drift apart, and the package installs
+  either way and then refuses to launch — which reads as an application bug, not
+  as a build that wrote its output under another name.
+
+  First Python file in `scripts/`: 500 lines of evaluator do not belong in a
+  heredoc. Installed and exposed as `uwp-read-vcxproj` like the rest.
+
+- **`scripts/build-project.sh`** — a `.vcxproj` in, a package layout out.
+  Restores the NuGet packages, builds every `ProjectReference` depth-first and
+  once each, generates the projection from the project's own `.idl`, compiles,
+  links, and copies each deployed file to the `TargetPath` the project gives it.
+  `build-app.sh` is unchanged and remains the shorter road for a project in the
+  shape of `examples/hello-uwp`.
+- **`scripts/restore-nuget.sh`** — `packages.config` or `PackageReference` to
+  `packages/<Id>.<Version>/`, the directory Visual Studio would create and the
+  one a project's `<Import>` lines name. Until it has run, a project's include
+  paths point at directories that are not there.
+- **`build.sh --static-lib`** — archives objects with `llvm-lib` instead of
+  linking an image, which is what a `ConfigurationType=StaticLibrary` project
+  produces and what the application referencing it links against. Exclusive with
+  `--uwp`: `/appcontainer` is a property of an image, and an archive is not one.
+- `tests/fixtures/`, and 30-odd cases over them: every property of the evaluator,
+  and every refusal, pinned by a fixture distilled from what real projects do.
+
+### Fixed
+
+- `msvc-compat.h` is force-included into every translation unit, C ones
+  included, and it opened with `<version>` — a C++ header. A C source stopped on
+  `fatal error: 'version' file not found`, blaming a file the project never
+  included. Guarded by `__cplusplus`, verified both ways.
+- The documented `xwin` invocation left a 424 MB `.xwin-cache` in whatever
+  directory it was run from — the project being built, usually, or the checkout
+  in CI. `--cache-dir` now points it at the same cache as everything else, and
+  `.gitignore` covers the case where someone runs it without.
+
 ## 0.1.1 — 2026-08-01
 
 ### Added

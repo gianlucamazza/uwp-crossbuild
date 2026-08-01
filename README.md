@@ -56,6 +56,9 @@ wine hello.exe
 
 # a real UWP application: idl -> winmd -> projection -> PE -> pri -> layout
 scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
+
+# an existing Visual Studio project, read rather than reconstructed
+scripts/build-project.sh --project uwp/app.vcxproj --out /tmp/layout
 ```
 
 ## What works
@@ -69,6 +72,7 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 | App-container executable      | `lld-link /appcontainer`                              | ✅ `DllCharacteristics` 0x1000 |
 | An unmodified VS source tree  | `include/msvc-compat.h`, force-included               | ✅ 216/216 of a real project   |
 | C and C++ in one project      | `build.sh`, one pass                                  | ✅ per-language standards      |
+| Reading a `.vcxproj`          | `read-vcxproj.py`, an MSBuild subset                  | ✅ or a refusal, never a guess |
 | Link a whole application      | `lld-link`                                            | ✅ 7.5 MB PE32+                |
 | Package, sign, deploy         | [openappx](https://github.com/gianlucamazza/openappx) | ✅ installed on an Xbox        |
 
@@ -212,6 +216,9 @@ scripts/gen-projection.sh    .idl -> .winmd -> App.g.h + module.g.cpp + winrt/
 scripts/gen-resources.sh     a layout -> resources.pri
 scripts/build.sh             clang-cl + lld-link, with PCH and parallel compiles
 scripts/build-app.sh         all of the above: a project directory -> a layout
+scripts/read-vcxproj.py      a Visual Studio project -> what it builds, as JSON
+scripts/restore-nuget.sh     packages.config -> packages/, from nuget.org
+scripts/build-project.sh     a .vcxproj -> a layout, references and DLLs included
 include/msvc-compat.h        force-included: what clang needs that MSVC assumes
 Makefile                     install / uninstall / check
 packaging/PKGBUILD           Arch package
@@ -263,15 +270,17 @@ a release should not go red because a downstream package is not set up yet.
 The scripts are MIT ([LICENSE](LICENSE)). **Nothing from Microsoft is
 redistributed**: `fetch-sdk.sh` and `xwin` fetch the SDK and CRT from Microsoft's
 CDN at run time, under the Windows SDK licence, into a cache this repository
-never touches. No `.winmd`, `.pri`, header or library from that download belongs
-in a commit.
+never touches. `restore-nuget.sh` fetches NuGet packages from nuget.org the same
+way, under their own licences. No `.winmd`, `.pri`, header, library or package
+from any of those downloads belongs in a commit.
 
 ## Next
 
-- **A `build-project.sh`** that reads a `.vcxproj` the way
-  [docs/porting-a-vcxproj.md](docs/porting-a-vcxproj.md) does by hand. Nothing
-  in that recipe is hard; it is just not automated, and the source list has to
-  come from the project rather than from a person.
+- **More of MSBuild, as projects need it.** `read-vcxproj.py` refuses what it
+  cannot evaluate rather than guessing, so a project that stops it names exactly
+  what is missing: a compiler setting with no entry in the mapping table, a
+  property only Visual Studio supplies, a target that generates sources. Each is
+  a table row and a fixture, not an investigation.
 - **A device that can actually launch a sideloaded app.** This one cannot — not
   even Microsoft Edge — so nothing built here has been seen to run. That needs
   different hardware, not a different package.

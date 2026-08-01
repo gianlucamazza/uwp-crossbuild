@@ -3,7 +3,7 @@
 ## Before opening a pull request
 
 ```bash
-make check                            # shellcheck, shfmt and the tests
+make check                            # shellcheck, shfmt, py_compile and the tests
 ```
 
 or, one at a time — `packaging/` included, because publish-aur.sh is a script
@@ -52,16 +52,38 @@ around each. That framing decides most questions:
 ## What can be tested
 
 `tests/run-tests.sh` covers what needs no SDK: argument handling, the guards
-that turn a confusing failure into a clear one, and `fix-header-case.sh`, which
-is pure parsing. It is plain bash on purpose — the repository has no package
-manifest and should not acquire one to run its tests.
+that turn a confusing failure into a clear one, and the two pieces that are pure
+parsing — `fix-header-case.sh` and `read-vcxproj.py`. It is plain bash on
+purpose — the repository has no package manifest and should not acquire one to
+run its tests.
+
+The `.vcxproj` fixtures under `tests/fixtures/` are distilled from what real
+Visual Studio projects do; none of it is invented, and none of it is copied from
+anyone's source tree. A refusal that a real project provokes belongs there as a
+fixture, next to the table row that names it.
+
+**The acceptance test is a corpus, and it is manual**, because the projects live
+outside this repository: `read-vcxproj.py --json` has to complete without a
+refusal on every real `.vcxproj` you have. What it refuses is either a gap in
+the mapping table or a deliberate limit — decide which, and write down the one
+you chose.
 
 Anything needing the real toolchain is verified by hand, and the outcome goes in
 the CHANGELOG rather than into a test that cannot run.
 
 ## Conventions
 
-- Scripts are bash with `set -euo pipefail`, formatted by `shfmt`.
+- Scripts are bash with `set -euo pipefail`, formatted by `shfmt`. One is
+  Python, because 500 lines of MSBuild evaluator do not belong in a heredoc; it
+  uses the standard library only, like everything else here.
+- **`read-vcxproj.py` refuses rather than guesses.** Its table of MSBuild
+  settings to clang-cl flags is a contract: a setting that is not in it is not
+  quietly dropped, because a build that silently differs from MSBuild's is worse
+  than no build — the difference shows up at the link, or on a device. Adding a
+  row means claiming an equivalence, so say why next to it.
+- A process substitution's exit status is not the pipeline's. `mapfile -t x <
+<(cmd)` succeeds when `cmd` fails, which turns a refusal into an empty list;
+  read through a command substitution and check.
 - A script that takes arguments validates them before doing any work, and its
   error names the fix (`run fetch-sdk.sh`, `pass --name`). A flag declared to
   take a value checks that it has one — `value "$1" $#` in every parser — rather

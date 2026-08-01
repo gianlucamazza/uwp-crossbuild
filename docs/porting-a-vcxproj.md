@@ -1,12 +1,52 @@
 # Building an existing Visual Studio project here
 
-A recipe for taking a UWP application that already builds with MSBuild and
-building it on Linux instead, without changing its source.
+Taking a UWP application that already builds with MSBuild and building it on
+Linux instead, without changing its source.
 
-It is written as an order of operations because that, and the reasons behind
-each step, is the part that is hard to rediscover. The numbers at the end come
-from doing it to a real application: 216 translation units, a large third-party
-inference library among them, packaged and installed on a device.
+```bash
+uwp-build-project --project uwp/app.vcxproj --out /tmp/layout
+```
+
+That reads the project, restores its NuGet packages, builds whatever it
+references, generates the projection from its `.idl`, compiles and links, and
+assembles a layout [openappx](https://github.com/gianlucamazza/openappx) can
+pack. The rest of this page is what it does and why — worth reading before
+trusting it, and necessary when it refuses.
+
+**It refuses rather than guesses.** A `.vcxproj` can say things this toolchain
+has no equivalent for, and a build that silently differs from the one MSBuild
+produces is worse than no build: the difference does not surface until the link,
+or until the application misbehaves on a device. So `read-vcxproj.py` — the
+evaluator underneath — stops and names what it did not understand: a property
+only Visual Studio can supply, a compiler setting outside its mapping table, a
+target that generates files. Each refusal is a decision to make deliberately,
+not a bug to work around.
+
+The numbers at the end come from doing this to a real application: 216
+translation units, a large third-party inference library among them, packaged
+and installed on a device.
+
+## What it evaluates
+
+`read-vcxproj.py PROJECT.vcxproj --json` prints what it made of a project, which
+is the first thing to look at when a build is not what you expected:
+
+```bash
+uwp-read-vcxproj uwp/app.vcxproj --json          # everything
+uwp-read-vcxproj uwp/app.vcxproj --field defines # one field, one per line
+uwp-read-vcxproj uwp/app.vcxproj --flags         # the same as build.sh arguments
+uwp-read-vcxproj uwp/app.vcxproj --config Debug  # the other configuration
+```
+
+Properties with conditions, `Exists()`, per-configuration
+`ItemDefinitionGroup`s, `%(Name)` continuations, `*` and `**` globs with
+`Exclude`, NuGet `.props` imports, `ProjectReference`, `DeploymentContent` —
+all of it, because a real project uses all of it.
+
+`--property NAME=VALUE` is MSBuild's `/p:`, and it matters more than it looks:
+a project's own switches live there, and one of them can decide whether a
+`ProjectReference` exists at all. A backend selected by a property is a
+different set of sources, defines and libraries.
 
 ## Whether your project can come at all
 
@@ -24,39 +64,39 @@ Everything else turned out not to matter: precompiled headers, native NuGet
 packages, C and C++ mixed in one project, and a source list of several hundred
 files all came across unchanged.
 
-## 1. Read the source list out of the project, do not retype it
-
-```bash
-grep -oP '(?<=ClCompile Include=")[^"]+' path/to/project.vcxproj | sed 's|\\|/|g'
-```
+## 1. The source list comes out of the project, never retyped
 
 MSBuild accepts globs. A project can list `..\lib\src\models\*.cpp` and mean a
 hundred and thirty-eight files; a list transcribed by hand will be missing them,
 and the omission surfaces only at link time, as undefined symbols with no
-obvious origin.
+obvious origin. The same goes for `<PreprocessorDefinitions>` and
+`<AdditionalIncludeDirectories>`: some defines carry values the build system
+computes — a version string, a commit hash — and a source file that uses one
+does not compile without it.
 
-The same goes for `<PreprocessorDefinitions>` and
-`<AdditionalIncludeDirectories>`: read them out, do not reconstruct them. Some
-defines carry values the build system computes — a version string, a commit
-hash — and a source file that uses one does not compile without it.
+This is the step that makes the whole thing worth automating, and it is why
+`read-vcxproj.py` evaluates properties rather than pattern-matching XML.
 
-## 2. Restore the NuGet dependencies
-
-Native NuGet packages are ordinary zip files:
+## 2. NuGet dependencies are restored, not assumed
 
 ```bash
-curl -sSL -o pkg.nupkg https://www.nuget.org/api/v2/package/<Id>/<Version>
-7z x -opkg pkg.nupkg
+uwp-restore-nuget --project uwp/app.vcxproj
 ```
 
-Headers live under `build/native/include`, import libraries and DLLs under
-`runtimes/win-x64/native`. Pass the include directories with `build.sh -I` and
-the library directories with `--link-arg /libpath:…`.
+A native NuGet package is an ordinary zip. `packages.config` or
+`PackageReference` says which ones and at which versions; they land in
+`packages/<Id>.<Version>/`, the directory Visual Studio would create and the one
+the project's own `<Import>` lines name. Headers live under
+`build/native/include`, import libraries and DLLs under `runtimes/win-x64/native`.
 
-Third-party DLLs are **copied into the package, not rebuilt**. They are already
-compiled for Windows, which is the reason for depending on them.
-`build-app.sh --copy pkg/runtimes/win-x64/native` puts them in the layout, and
-it is repeatable — one for each package.
+Until this has run, a project's `.props` imports resolve to nothing and its
+include paths point at absent directories — which is why `build-project.sh`
+restores first and reads the project again afterwards.
+
+Third-party DLLs are **copied into the package, not rebuilt**: they are already
+compiled for Windows, which is the reason for depending on them. A project says
+so itself, with `<None … DeploymentContent="true"><TargetPath>`, and that is
+what puts each DLL beside the executable under the name the loader expects.
 
 ## 3. Generate the projection from the project's own `.idl`
 
@@ -69,7 +109,14 @@ headers. The sources implementing the application class do not compile without
 them, and **the winmd has to ship inside the package**: the manifest's
 `EntryPoint="myapp.App"` is resolved against it at activation.
 
-## 4. Compile
+## 4. Everything a `ProjectReference` names is built first
+
+A project that references another gets it built as a static library and linked
+in — `build.sh --static-lib` archives the objects with `llvm-lib` rather than
+linking an image, because `/appcontainer` belongs to the application, not to the
+archive. Each library is built once however many projects name it.
+
+## 5. Compile
 
 `build.sh` force-includes `include/msvc-compat.h`, which is what lets a source
 tree written for MSVC compile unchanged.
@@ -83,12 +130,15 @@ uwp-build --uwp --pch pch.h --out myapp.exe \
 ```
 
 C and C++ sources go in the same command: `build.sh` compiles a `.c` with
-`UWP_C_STD` (c17) and everything else with `UWP_CXX_STD` (c++20), and the
-precompiled header — a C++ artefact — is applied only to the C++ ones. `--pch`
+`UWP_C_STD` and everything else with `UWP_CXX_STD` — taken from the project's
+own `LanguageStandard` and `LanguageStandard_C`, except that `stdcpp17` is
+overridden to C++20, because C++/WinRT below C++20 reaches for
+`<experimental/coroutine>` and that header refuses clang by design. The
+precompiled header, a C++ artefact, is applied only to the C++ sources. `--pch`
 is worth it wherever the XAML projection is included: around 30 seconds per
 translation unit becomes around one.
 
-## 5. Link, package, install
+## 6. Link, package, install
 
 `--uwp` sets `/appcontainer` and the windows subsystem. Check it landed:
 
@@ -98,8 +148,8 @@ DllCharacteristics	00009160        # 0x1000 present
 ```
 
 A project laid out like `examples/hello-uwp` — one `.idl`, the sources and the
-manifest in one directory — can have steps 3 to 5 done for it in one command,
-DLLs included:
+manifest in one directory, no `.vcxproj` — has `build-app.sh` instead, which is
+the shorter road for that shape:
 
 ```bash
 uwp-build-app --project uwp --out /tmp/layout \
