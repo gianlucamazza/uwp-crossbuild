@@ -12,6 +12,12 @@
 ## Install
 
 ```bash
+yay -S uwp-crossbuild            # Arch, from the AUR
+```
+
+or from a checkout:
+
+```bash
 make install                    # into ~/.local; ~/.local/bin must be on PATH
 sudo make install PREFIX=/usr   # system-wide
 ```
@@ -20,8 +26,6 @@ The scripts land under `$PREFIX/lib/uwp-crossbuild` and are exposed as
 `uwp-build`, `uwp-build-app`, `uwp-check-deps` and so on. They are installed as
 a tree rather than as loose files: `build.sh` reads `include/msvc-compat.h` from
 beside itself. `make uninstall` removes everything.
-
-`packaging/PKGBUILD` builds an Arch package from a release tag.
 
 Running from a checkout works too — every example below does — and needs no
 installation at all.
@@ -198,10 +202,31 @@ scripts/build-app.sh         all of the above: a project directory -> a layout
 include/msvc-compat.h        force-included: what clang needs that MSVC assumes
 Makefile                     install / uninstall / check
 packaging/PKGBUILD           Arch package
+packaging/publish-aur.sh     update and publish it, by hand or from CI
 examples/hello-winrt/        C++/WinRT console program that exercises real APIs
 examples/hello-uwp/          a UWP application in the shape that cross-compiles
 tests/run-tests.sh           everything checkable without downloading the SDK
 ```
+
+## Releasing
+
+```bash
+git tag -a v0.1.1 -m "…" && git push origin v0.1.1
+```
+
+`aur.yml` then updates the AUR package by running `packaging/publish-aur.sh`,
+which is also the manual path:
+
+```bash
+packaging/publish-aur.sh --version 0.1.1 --dry-run   # build and check only
+packaging/publish-aur.sh --version 0.1.1             # and push to the AUR
+```
+
+It rewrites `pkgver`, downloads the release tarball to compute its checksum,
+regenerates `.SRCINFO` and builds the package with its tests before pushing, so
+a hand-edited checksum can never describe a different tarball. Without the
+`AUR_SSH_KEY` secret the workflow does a dry run instead of failing — a release
+should not go red because a downstream package is not set up yet.
 
 ## Licensing
 

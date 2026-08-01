@@ -7,6 +7,22 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
+## Unreleased
+
+### Added
+
+- `make install` / `make uninstall`, and `packaging/PKGBUILD` for Arch. The
+  scripts install as a tree with `uwp-*` symlinks on PATH.
+- `packaging/publish-aur.sh` and `aur.yml`: the AUR package updates itself on a
+  release tag, running the same script a maintainer runs by hand.
+
+### Fixed
+
+- The scripts resolved `include/msvc-compat.h` and each other against
+  `${BASH_SOURCE[0]}` without following symlinks, so anything on PATH pointed at
+  the wrong directory and `build.sh` died. They could not have been packaged
+  before this.
+
 ## 0.1.0 — 2026-08-01
 
 The first version where the chain is complete: an `.idl` becomes a `.msix` a

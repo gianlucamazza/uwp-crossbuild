@@ -22,7 +22,7 @@ optdepends=('winetricks: installs msxml6, which makepri needs'
 makedepends=('shellcheck')
 checkdepends=('shellcheck')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('a76f2f4f24dac7cf2ac9faf5f2a04e2e1e9bb9128b3f77491edf7f7f53055c80')
 
 check() {
 	cd "$pkgname-$pkgver"
