@@ -62,8 +62,11 @@ out="$(cd "$out" && pwd)"
 # that used to be called something else. Clear it, but only once it is
 # recognisably a layout of ours: --out pointed somewhere unexpected should not
 # delete that directory's contents.
+# $name.exe counts as well as the manifest: a build that died between the link
+# and the copy leaves a layout holding only the executable, and the next run
+# should not need a manual rm.
 if [[ -n "$(ls -A "$out")" ]]; then
-	[[ -f "$out/AppxManifest.xml" ]] ||
+	[[ -f "$out/AppxManifest.xml" || -f "$out/$name.exe" ]] ||
 		die "$out is not empty and holds no AppxManifest.xml — refusing to clear it"
 	find "$out" -mindepth 1 -delete
 fi

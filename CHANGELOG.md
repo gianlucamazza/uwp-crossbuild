@@ -14,10 +14,10 @@ a specific version, and knowing which is the whole point of writing it down.
 - `packaging/publish-aur.sh` and `aur.yml`: the AUR package updates itself on a
   release tag, running the same script a maintainer runs by hand.
 - `build-app.sh` clears a stale layout before assembling a new one, and refuses
-  an `--out` inside `--project` or a non-empty directory that holds no
-  `AppxManifest.xml`. A layout is the package's contents: whatever survives from
-  an earlier build — an executable under a name the project no longer uses —
-  ships with it.
+  an `--out` inside `--project` or a non-empty directory holding neither an
+  `AppxManifest.xml` nor the executable it is about to build. A layout is the
+  package's contents: whatever survives from an earlier build — an executable
+  under a name the project no longer uses — ships with it.
 
 ### Fixed
 
