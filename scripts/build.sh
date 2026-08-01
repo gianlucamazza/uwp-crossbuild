@@ -14,6 +14,10 @@
 #                  unit, ~1 s through a PCH (measured, see README).
 #     --jobs       parallel compiles (default: nproc)
 #     --link-arg   pass one argument straight to lld-link (repeatable)
+#     --static-lib archive the objects into a .lib instead of linking an
+#                  executable. What a Visual Studio project marked
+#                  ConfigurationType=StaticLibrary produces, and what a project
+#                  that references it expects to link against.
 #     --help       this text
 #
 # C and C++ sources can be given together: a .c file is compiled as C, with
@@ -38,6 +42,7 @@ out=""
 pch=""
 jobs="$(nproc 2>/dev/null || echo 4)"
 uwp=0
+static_lib=0
 sources=()
 extra=()
 link_args=()
@@ -66,6 +71,7 @@ while [[ $# -gt 0 ]]; do
 	--pch) value "$1" $# && pch="$2" && shift 2 ;;
 	--jobs) value "$1" $# && jobs="$2" && shift 2 ;;
 	--uwp) uwp=1 && shift ;;
+	--static-lib) static_lib=1 && shift ;;
 	-I | --include) value "$1" $# && include_dirs+=("/I$2") && shift 2 ;;
 	--link-arg) value "$1" $# && link_args+=("$2") && shift 2 ;;
 	--)
@@ -89,6 +95,14 @@ for src in "${sources[@]}"; do
 done
 [[ -d "$XWIN_ROOT/crt/include" ]] || die "no CRT at $XWIN_ROOT — run fetch-sdk.sh"
 command -v clang-cl >/dev/null || die "clang-cl not found"
+if [[ $static_lib -eq 1 ]]; then
+	command -v llvm-lib >/dev/null ||
+		die "llvm-lib not found — it ships with LLVM, beside clang-cl"
+	[[ $uwp -eq 0 ]] ||
+		die "--static-lib and --uwp are exclusive: /appcontainer is a property of
+  an image, and an archive is not one. The application that links this library
+  is where --uwp belongs."
+fi
 
 # Force-included before everything: the two adjustments a source tree written
 # for MSVC needs in order to compile with clang unchanged. See the header.
@@ -197,6 +211,12 @@ done
 wait_all ${pids[@]+"${pids[@]}"} || die "compilation failed"
 
 [[ -n "$pch" ]] && objects+=("$objdir/pch.obj")
+
+if [[ $static_lib -eq 1 ]]; then
+	# An archive, not an image: no libraries, no entry point, no subsystem.
+	# Whatever links it resolves the symbols.
+	exec llvm-lib "/out:$out" "${objects[@]}"
+fi
 
 exec clang-cl -target "$TARGET" "${objects[@]}" -o "$out" \
 	-fuse-ld=lld-link -link "${libs[@]}" "${link_args[@]}"

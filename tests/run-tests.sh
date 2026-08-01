@@ -75,6 +75,18 @@ succeeds_with() { # succeeds_with <name> <expected-substring> <command...>
 	fi
 }
 
+lacks() { # lacks <name> <substring that must not appear> <command...>
+	local name="$1" unwanted="$2"
+	shift 2
+	local out
+	out="$("$@" 2>&1)"
+	if [[ "$out" == *"$unwanted"* ]]; then
+		no "$name" "'$unwanted' is in the output: $out"
+	else
+		ok "$name"
+	fi
+}
+
 echo "fix-header-case.sh --canonical"
 tmp="$(mktemp -d)"
 # Capitalising each segment would give "Applicationmodel" and
@@ -155,6 +167,12 @@ fails_with "a flag with no value says so" "--out needs a value" \
 	"$scripts/build.sh" --out
 fails_with "--jobs takes a positive integer" "--jobs must be a positive integer" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe --jobs 0 "$tmp/a.cpp"
+# An archive has no DllCharacteristics to set: /appcontainer belongs to the
+# application that links the library, not to the library.
+mkdir -p "$tmp/crt/include"
+fails_with "--static-lib and --uwp are exclusive" "exclusive" \
+	env UWP_XWIN_ROOT="$tmp" "$scripts/build.sh" --static-lib --uwp \
+	--out a.lib "$tmp/a.cpp"
 rm -rf "$tmp"
 
 echo "--help"
@@ -260,6 +278,124 @@ fails_with "python3 is a prerequisite, for fix-header-case --canonical" "python3
 fails_with "msxml6 counts as missing rather than exiting 0" "Missing:" \
 	env PATH=/nonexistent "$BASH" "$scripts/check-deps.sh"
 
+echo "read-vcxproj.py"
+# One fixture exercising everything the evaluator has to get right, distilled
+# from what real Visual Studio projects do — the repository cannot depend on
+# anyone's private source tree, so the shapes are copied and the code is not.
+vcxproj="$here/fixtures/evaluation/evaluation.vcxproj"
+read_vcxproj="$scripts/read-vcxproj.py"
+
+succeeds_with "a conditional property resolves into the defines" "USE_ORT=1" \
+	"$read_vcxproj" "$vcxproj" --field defines
+lacks "the branch its condition excluded leaves nothing behind" "USE_LLAMA" \
+	"$read_vcxproj" "$vcxproj" --field defines
+lacks "%(PreprocessorDefinitions) is not passed to the compiler" "%(" \
+	"$read_vcxproj" "$vcxproj" --field defines
+# Capitalising a guess at what MSBuild means is the whole failure mode here, so
+# each of these says what the wrong answer would look like.
+succeeds_with "a ** glob reaches a nested source" "src/deep/two.c" \
+	"$read_vcxproj" "$vcxproj" --field sources.c
+succeeds_with "C is separated from C++" "src/keep.cpp" \
+	"$read_vcxproj" "$vcxproj" --field sources.cpp
+lacks "an Exclude is honoured" "generated.cpp" \
+	"$read_vcxproj" "$vcxproj" --field sources.cpp
+lacks "a .c file is not listed among the C++ ones" "one.c" \
+	"$read_vcxproj" "$vcxproj" --field sources.cpp
+# README, "Fourteen things", 1: C++/WinRT below C++20 reaches for
+# <experimental/coroutine>, whose first line is an #error refusing clang.
+succeeds_with "stdcpp17 is overridden to c++20, not honoured" "c++20" \
+	"$read_vcxproj" "$vcxproj" --field std.cxx
+succeeds_with "the C standard comes from LanguageStandard_C" "c11" \
+	"$read_vcxproj" "$vcxproj" --field std.c
+succeeds_with "the Release ItemDefinitionGroup applies" "/O2" \
+	"$read_vcxproj" "$vcxproj" --field options
+lacks "and the Debug one does not" "/Od" \
+	"$read_vcxproj" "$vcxproj" --field options
+succeeds_with "--config Debug picks the other one" "/Od" \
+	"$read_vcxproj" "$vcxproj" --config Debug --field options
+succeeds_with "ObjectFileName and MultiProcessorCompilation are dropped" "/EHa" \
+	"$read_vcxproj" "$vcxproj" --field options
+succeeds_with "the manifest whose condition holds is the one chosen" "AppxManifest.xml" \
+	"$read_vcxproj" "$vcxproj" --field manifest
+succeeds_with "a DeploymentContent file keeps its package-relative target" "thirdparty.dll" \
+	"$read_vcxproj" "$vcxproj" --field deploy
+succeeds_with "an Image ships without asking to" "Assets/StoreLogo.png" \
+	"$read_vcxproj" "$vcxproj" --field deploy
+# A ProjectReference can be gated on a property, and MSBuild's /p: is the only
+# way to reach it — without --property the reference does not exist at all.
+lacks "a gated ProjectReference is absent by default" "library.vcxproj" \
+	"$read_vcxproj" "$vcxproj" --field references
+succeeds_with "--property reaches it, as MSBuild's /p: does" "library.vcxproj" \
+	"$read_vcxproj" "$vcxproj" --property Backend=llamacpp --field references
+fails_with "--property wants NAME=VALUE" "NAME=VALUE" \
+	"$read_vcxproj" "$vcxproj" --property Backend
+fails_with "an unknown field is refused" "no such field" \
+	"$read_vcxproj" "$vcxproj" --field sources.rust
+
+echo "read-vcxproj.py refuses what it cannot reproduce"
+# Each of these is a way a build could silently stop matching the one MSBuild
+# produces. The error has to name the thing, not the file in general.
+refused="$here/fixtures/refused"
+fails_with "a property only Visual Studio supplies" "supplied by Visual Studio" \
+	"$read_vcxproj" "$refused/reserved-property.vcxproj"
+fails_with "a compiler setting outside the mapping table" "EnableEnhancedInstructionSet" \
+	"$read_vcxproj" "$refused/unknown-metadata.vcxproj"
+fails_with "a condition in a syntax it does not implement" "cannot read condition" \
+	"$read_vcxproj" "$refused/unknown-condition.vcxproj"
+fails_with "a target that produces a file" "<Copy>" \
+	"$read_vcxproj" "$refused/target-with-task.vcxproj"
+fails_with "a project type nothing here has ever built" "DynamicLibrary" \
+	"$read_vcxproj" "$refused/dynamic-library.vcxproj"
+fails_with "C++/CX, which is a different language" "C++/CX" \
+	"$read_vcxproj" "$refused/compile-as-winrt.vcxproj"
+fails_with "a project that is not there" "no such project" \
+	"$read_vcxproj" "$refused/absent.vcxproj"
+# The OS activates what the manifest names. A package whose executable is called
+# something else installs, then fails to launch, and reads as an application bug.
+fails_with "a manifest that starts another executable" "would install and fail to launch" \
+	"$read_vcxproj" "$refused/mismatched-executable.vcxproj"
+
+echo "build-project.sh guards"
+fails_with "--project and --out are required" "--project and --out are required" \
+	"$scripts/build-project.sh" --project "$vcxproj"
+fails_with "a project directory is sent to build-app.sh" "build-app.sh" \
+	"$scripts/build-project.sh" --project "$here/fixtures" --out /tmp/nowhere
+fails_with "and so is a file that is not a .vcxproj" "build-app.sh" \
+	"$scripts/build-project.sh" --project "$here/run-tests.sh" --out /tmp/nowhere
+fails_with "what read-vcxproj.py refuses, this refuses" "DynamicLibrary" \
+	"$scripts/build-project.sh" --project "$refused/dynamic-library.vcxproj" \
+	--out /tmp/nowhere
+fails_with "--out inside the project directory is refused" "must be outside" \
+	"$scripts/build-project.sh" --project "$vcxproj" \
+	--out "$here/fixtures/evaluation/layout"
+rm -rf "$here/fixtures/evaluation/layout"
+# A StaticLibrary is built as somebody's reference, never on its own: it has no
+# manifest and produces no package.
+fails_with "a library is not a package" "Only an Application" \
+	"$scripts/build-project.sh" --project "$here/fixtures/evaluation/library.vcxproj" \
+	--out /tmp/nowhere
+
+echo "restore-nuget.sh"
+# Nothing here goes to the network: what is under test is the reading of the
+# package list and the refusals, not nuget.org.
+fails_with "a project or a config is required" "--project or --config is required" \
+	"$scripts/restore-nuget.sh"
+fails_with "and not both" "exclusive" \
+	"$scripts/restore-nuget.sh" --project a.vcxproj --config packages.config
+fails_with "a config that is not there" "no such packages.config" \
+	"$scripts/restore-nuget.sh" --config /nonexistent/packages.config
+tmp="$(mktemp -d)"
+printf 'not xml at all\n' >"$tmp/packages.config"
+fails_with "a config that is not XML says so" "not readable as XML" \
+	"$scripts/restore-nuget.sh" --config "$tmp/packages.config"
+printf '<packages><package id="Only.An.Id" /></packages>\n' >"$tmp/packages.config"
+fails_with "a package without a version is refused" "without an id and a version" \
+	"$scripts/restore-nuget.sh" --config "$tmp/packages.config"
+printf '<packages></packages>\n' >"$tmp/packages.config"
+succeeds_with "a project with no packages is not an error" "nothing to restore" \
+	"$scripts/restore-nuget.sh" --config "$tmp/packages.config"
+rm -rf "$tmp"
+
 echo "msvc-compat.h"
 compat="$here/../include/msvc-compat.h"
 assert "the compat header exists" "build.sh force-includes it" test -f "$compat"
@@ -271,6 +407,24 @@ assert "<version> comes before <windows.h>" "wrong order in msvc-compat.h" \
 	"$(grep -n "include <windows.h>" "$compat" | cut -d: -f1)"
 assert "GetCurrentTime is undefined after windows.h" "no #undef GetCurrentTime" \
 	grep -q "^#undef GetCurrentTime" "$compat"
+# The header is force-included into every translation unit, C ones included, and
+# <version> is a C++ header: a C source stopped on "'version' file not found",
+# blaming a file the project never included. Neither compile can succeed here —
+# there is no CRT on a build host — so what is checked is which error arrives.
+if ! command -v clang-cl >/dev/null; then
+	skip "a C translation unit does not see <version>" "clang-cl is not installed"
+else
+	tmp="$(mktemp -d)"
+	printf 'int f(void) { return 0; }\n' >"$tmp/c.c"
+	printf 'int f() { return 0; }\n' >"$tmp/cpp.cpp"
+	lacks "a C translation unit does not see <version>" "'version' file not found" \
+		clang-cl -target x86_64-pc-windows-msvc /std:c11 "/FI$compat" \
+		/c "$tmp/c.c" -o "$tmp/c.obj"
+	fails_with "a C++ one does" "'version' file not found" \
+		clang-cl -target x86_64-pc-windows-msvc /std:c++20 "/FI$compat" \
+		/c "$tmp/cpp.cpp" -o "$tmp/cpp.obj"
+	rm -rf "$tmp"
+fi
 
 printf '\n%d passed, %d failed, %d skipped\n' "$passed" "$failed" "$skipped"
 [[ $failed -eq 0 ]]

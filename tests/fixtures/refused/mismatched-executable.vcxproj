@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The manifest starts one name, the project builds another. The package
+     installs and then fails to launch, which reads as an application bug. -->
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ConfigurationType>Application</ConfigurationType>
+    <TargetName>renamed</TargetName>
+  </PropertyGroup>
+  <ItemGroup>
+    <AppxManifest Include="mismatched.AppxManifest.xml" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One project exercising everything the evaluator has to get right, distilled
+  from what real Visual Studio projects do. Every element here is present in at
+  least one project this was built against; none of it is invented.
+-->
+<Project DefaultTargets="Build" ToolsVersion="15.0"
+         xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <PropertyGroup Label="Globals">
+    <ConfigurationType>Application</ConfigurationType>
+    <RootNamespace>evaluation</RootNamespace>
+  </PropertyGroup>
+
+  <!-- The idiom every project opens with: a switch that reads itself to find
+       out whether it has been set, then defaults. The define below exists only
+       when the switch has a particular value. -->
+  <PropertyGroup>
+    <Backend Condition="'$(Backend)' == ''">ort</Backend>
+    <OrtDefine Condition="'$(Backend)' != 'llamacpp'">USE_ORT=1;</OrtDefine>
+    <LlamaDefine Condition="'$(Backend)' == 'llamacpp' or '$(Backend)' == 'unified'">USE_LLAMA=1;</LlamaDefine>
+  </PropertyGroup>
+
+  <!-- MSBuild's own build system. Skipped: this tool replaces it. -->
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <!-- A NuGet .props that has not been restored. The Condition says so, and the
+       import is skipped rather than refused. -->
+  <Import Project="packages\Some.Package.1.0.0\build\native\Some.Package.props"
+          Condition="Exists('packages\Some.Package.1.0.0\build\native\Some.Package.props')" />
+
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>
+        $(ProjectDir);
+        $(ProjectDir)include;
+        %(AdditionalIncludeDirectories)
+      </AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>
+        NOMINMAX;
+        $(OrtDefine)
+        $(LlamaDefine)
+        %(PreprocessorDefinitions)
+      </PreprocessorDefinitions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard_C>stdc11</LanguageStandard_C>
+      <ExceptionHandling>Async</ExceptionHandling>
+      <ConformanceMode>true</ConformanceMode>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>WindowsApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <AdditionalOptions>/arch:AVX2 %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <ClCompile Include="src\**\*.c" />
+    <ClCompile Include="src\*.cpp" Exclude="src\generated.cpp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Midl Include="app.idl" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AppxManifest Include="AppxManifest.xml" Condition="'$(StoreSku)' != 'true'" />
+    <AppxManifest Include="AppxManifest.store.xml" Condition="'$(StoreSku)' == 'true'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Image Include="Assets\StoreLogo.png" />
+    <None Include="payload\thirdparty.dll">
+      <DeploymentContent>true</DeploymentContent>
+      <TargetPath>thirdparty.dll</TargetPath>
+    </None>
+  </ItemGroup>
+
+  <!-- Only when the switch selects it, exactly as a real project gates a
+       backend it does not always build. -->
+  <ItemGroup Condition="'$(Backend)' == 'llamacpp'">
+    <ProjectReference Include="library.vcxproj" />
+  </ItemGroup>
+
+  <!-- Visual Studio writes this into every project that uses NuGet. It raises
+       an error and produces nothing, so it is skipped rather than refused. -->
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('packages\Some.Package.1.0.0\build\native\Some.Package.props')"
+           Text="$(ErrorText)" />
+  </Target>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

@@ -33,7 +33,9 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Syntax
-        run: for f in scripts/*.sh tests/*.sh packaging/*.sh; do bash -n "$f"; done
+        run: |
+          for f in scripts/*.sh tests/*.sh packaging/*.sh; do bash -n "$f"; done
+          python3 -m py_compile scripts/*.py
 
       - name: shellcheck
         run: shellcheck scripts/*.sh tests/*.sh packaging/*.sh
@@ -62,6 +64,10 @@ jobs:
           /tmp/prefix/bin/uwp-build 2>&1 | grep -q "\-\-out is required"
           /tmp/prefix/bin/uwp-build-app --project /nonexistent --out /tmp/x 2>&1 \
             | grep -q "no app.idl"
+          # build-project.sh finds read-vcxproj.py beside itself, which is the
+          # thing an installed tree gets wrong.
+          /tmp/prefix/bin/uwp-build-project --project /nonexistent.vcxproj \
+            --out /tmp/x 2>&1 | grep -q "no such project"
           test -f /tmp/prefix/lib/uwp-crossbuild/include/msvc-compat.h
           cd "$GITHUB_WORKSPACE"
           make uninstall PREFIX=/tmp/prefix
@@ -71,7 +77,7 @@ jobs:
 
       - name: The PKGBUILD agrees with the tree
         run: |
-          for script in scripts/*.sh; do
+          for script in scripts/*.sh scripts/*.py; do
             grep -q "$(basename "$script")" Makefile ||
               { echo "$script is not installed by the Makefile"; exit 1; }
           done
@@ -82,7 +88,7 @@ jobs:
         # A script that loses its +x bit still works via `bash x.sh` and fails
         # for anyone following the README.
         run: |
-          for f in scripts/*.sh tests/*.sh packaging/*.sh; do
+          for f in scripts/*.sh scripts/*.py tests/*.sh packaging/*.sh; do
             [ -x "$f" ] || { echo "not executable: $f"; exit 1; }
           done
 
@@ -128,7 +134,10 @@ jobs:
           curl -sSL --fail \
             "https://github.com/Jake-Shadle/xwin/releases/download/${XWIN_VERSION}/xwin-${XWIN_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
             | tar xz -C /tmp --strip-components=1
-          /tmp/xwin --accept-license --arch x86_64 splat --output ~/.cache/uwp-crossbuild/xwin
+          # --cache-dir, or xwin leaves a 424 MB .xwin-cache in the checkout.
+          /tmp/xwin --accept-license --arch x86_64 \
+            --cache-dir ~/.cache/uwp-crossbuild/xwin-download \
+            splat --output ~/.cache/uwp-crossbuild/xwin
           scripts/fix-header-case.sh ~/.cache/uwp-crossbuild/xwin/sdk/include/cppwinrt/winrt --canonical
 
       - name: SDK tools

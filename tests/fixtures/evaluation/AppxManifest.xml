@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+  <Applications><Application Id="x" Executable="evaluation.exe" EntryPoint="evaluation.App"/></Applications>
+</Package>

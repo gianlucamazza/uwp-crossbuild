@@ -14,12 +14,16 @@ BINDIR ?= $(PREFIX)/bin
 LIBDIR ?= $(PREFIX)/lib/uwp-crossbuild
 DOCDIR ?= $(PREFIX)/share/doc/uwp-crossbuild
 
-SCRIPTS := build.sh build-app.sh check-deps.sh fetch-sdk.sh \
-           fix-header-case.sh gen-projection.sh gen-resources.sh wine-tool.sh
+SCRIPTS := build.sh build-app.sh build-project.sh check-deps.sh fetch-sdk.sh \
+           fix-header-case.sh gen-projection.sh gen-resources.sh \
+           restore-nuget.sh wine-tool.sh
+# read-vcxproj.py is Python because it is 500 lines of MSBuild evaluator, which
+# does not belong in a heredoc. It is installed and exposed like the rest.
+SCRIPTS += read-vcxproj.py
 
 # Exposed on PATH under a uwp- prefix: `build.sh` alone in ~/.local/bin would be
 # an unusually good way to collide with something.
-LINKS := $(patsubst %.sh,uwp-%,$(SCRIPTS))
+LINKS := $(patsubst %.py,uwp-%,$(patsubst %.sh,uwp-%,$(SCRIPTS)))
 
 .PHONY: all install uninstall check lint
 
@@ -34,7 +38,8 @@ install:
 	install -m 0644 README.md CHANGELOG.md LICENSE $(DESTDIR)$(DOCDIR)/
 	install -m 0644 docs/*.md $(DESTDIR)$(DOCDIR)/
 	@set -e; for s in $(SCRIPTS); do \
-		ln -sf $(LIBDIR)/scripts/$$s $(DESTDIR)$(BINDIR)/uwp-$${s%.sh}; \
+		n=$${s%.sh}; n=$${n%.py}; \
+		ln -sf $(LIBDIR)/scripts/$$s $(DESTDIR)$(BINDIR)/uwp-$$n; \
 	done
 	@echo "installed to $(PREFIX); $(BINDIR) must be on PATH"
 	@echo "try: uwp-check-deps"
@@ -52,6 +57,7 @@ SHELL_FILES := scripts/*.sh tests/*.sh packaging/*.sh
 
 lint:
 	shellcheck $(SHELL_FILES)
+	python3 -m py_compile scripts/*.py
 	@# `cmd -v shfmt && shfmt -d ... || echo` would report a *diff* as "not
 	@# installed" and exit 0, so make check passed on unformatted scripts.
 	@if command -v shfmt >/dev/null; then \

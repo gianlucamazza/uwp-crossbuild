@@ -40,7 +40,11 @@ installation at all.
 scripts/check-deps.sh                                  # what is missing, before downloading
 # xwin comes first: fetch-sdk.sh reads the C++/WinRT version out of the headers
 # it installs, and pinning cppwinrt.exe to anything else fails every build.
-xwin --accept-license --arch x86_64 splat --output ~/.cache/uwp-crossbuild/xwin
+# --cache-dir, or xwin leaves a 424 MB .xwin-cache in whatever directory you
+# happened to be in — the project you are building, usually.
+xwin --accept-license --arch x86_64 \
+  --cache-dir ~/.cache/uwp-crossbuild/xwin-download \
+  splat --output ~/.cache/uwp-crossbuild/xwin
 scripts/fix-header-case.sh ~/.cache/uwp-crossbuild/xwin/sdk/include/cppwinrt/winrt --canonical
 scripts/fetch-sdk.sh                                   # SDK tools, ~1.1 GB, cached
 

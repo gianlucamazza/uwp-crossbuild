@@ -1,0 +1,1 @@
+// fixture: globbed, never compiled

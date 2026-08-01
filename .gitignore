@@ -10,3 +10,10 @@ build/
 *.exe
 *.objs/
 *.build/
+
+# Python bytecode from read-vcxproj.py
+__pycache__/
+
+# xwin caches its downloads in the current directory unless told otherwise.
+# The README passes --cache-dir; this is for when someone forgets.
+.xwin-cache/
