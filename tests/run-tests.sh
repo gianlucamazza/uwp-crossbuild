@@ -102,13 +102,21 @@ assert "acronyms stay upper-case" "no Windows.AI.MachineLearning.h" \
 assert "the alias points at the real file" "wrong link target" \
 	is_link_to "$tmp/Windows.AI.MachineLearning.h" windows.ai.machinelearning.h
 
-# A wrong alias from an earlier version of this script must not survive.
+# A wrong alias from an earlier version of this script must not survive — but
+# only aliases of this mode's own shape are its to delete: --lower's
+# all-lowercase ones and a user's symlink to elsewhere both stay.
 ln -s windows.ai.machinelearning.h "$tmp/Windows.Ai.Machinelearning.h"
+ln -s windows.applicationmodel.datatransfer.h "$tmp/lowercase.alias.h"
+ln -s /etc/hostname "$tmp/My.Own.Header.h"
 "$scripts/fix-header-case.sh" "$tmp" --canonical >/dev/null
 assert "a stale alias is removed" "Windows.Ai.Machinelearning.h survived" \
 	test ! -e "$tmp/Windows.Ai.Machinelearning.h"
 assert "rerunning is idempotent" "the correct alias did not come back" \
 	test -L "$tmp/Windows.AI.MachineLearning.h"
+assert "an all-lowercase alias survives --canonical" "lowercase.alias.h was deleted" \
+	test -L "$tmp/lowercase.alias.h"
+assert "a symlink to elsewhere survives --canonical" "My.Own.Header.h was deleted" \
+	test -L "$tmp/My.Own.Header.h"
 rm -rf "$tmp"
 
 echo "fix-header-case.sh --lower"
