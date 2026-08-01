@@ -84,7 +84,7 @@ if [[ ! -f "$SDK_ROOT/cppwinrt/bin/cppwinrt.exe" ]]; then
 fi
 
 step "Checking MSXML6, which makepri needs"
-if ! wine reg query 'HKCU\Software\Wine\DllOverrides' /v msxml6 >/dev/null 2>&1; then
+if ! wine reg query 'HKCU\Software\Wine\DllOverrides' 2>/dev/null | grep -qi msxml6; then
 	cat <<'EOF'
   MSXML6 is not overridden in this Wine prefix. `makepri new` will fail with
   "PRI175: Initializing Indexer / Schema Validation Failed" without it:
