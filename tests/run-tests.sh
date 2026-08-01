@@ -158,6 +158,8 @@ echo '<Package><Applications><Application Id="x" Executable="hello.exe"/></Appli
 	>"$tmp/AppxManifest.xml"
 fails_with "--out inside --project is refused" "must be outside --project" \
 	"$scripts/build-app.sh" --project "$tmp" --out "$tmp/inside"
+assert "a refused --out leaves nothing behind" "$tmp/inside was created" \
+	test ! -e "$tmp/inside"
 # The reverse direction: clearing a stale layout is recursive, so a project
 # under --out would be deleted with it — sources and all.
 nested="$(mktemp -d)"
@@ -169,6 +171,18 @@ fails_with "--project inside --out is refused" "must not live under --out" \
 assert "the nested project kept its sources" "app.idl was deleted" \
 	test -f "$nested/src/app.idl"
 rm -rf "$nested"
+# Symlinks must not defeat the guards: the comparisons are on resolved paths,
+# or a layout reached through a link deletes the project inside the real one.
+sym="$(mktemp -d)"
+mkdir -p "$sym/data/layout/proj"
+cp "$tmp/AppxManifest.xml" "$sym/data/layout/"
+cp "$tmp/app.idl" "$tmp/AppxManifest.xml" "$sym/data/layout/proj/"
+ln -s data "$sym/slink"
+fails_with "a symlinked --out cannot hide the project inside it" "must not live under --out" \
+	"$scripts/build-app.sh" --project "$sym/data/layout/proj" --out "$sym/slink/layout"
+assert "the project behind the symlink kept its sources" "app.idl was deleted" \
+	test -f "$sym/data/layout/proj/app.idl"
+rm -rf "$sym"
 # A directory that is not recognisably a layout is never cleared, whatever
 # --out was pointed at.
 elsewhere="$(mktemp -d)"

@@ -45,21 +45,25 @@ done
 [[ -n "$project" && -n "$out" ]] || die "--project and --out are required"
 [[ -f "$project/app.idl" ]] || die "no app.idl in $project"
 [[ -f "$project/AppxManifest.xml" ]] || die "no AppxManifest.xml in $project"
-project="$(cd "$project" && pwd)"
+project="$(cd "$project" && pwd -P)"
 
 if [[ -z "$name" ]]; then
 	name=$(sed -n 's/.*Executable="\([^"]*\)\.exe".*/\1/p' "$project/AppxManifest.xml" | head -1)
 	[[ -n "$name" ]] || die "cannot read Executable from the manifest; pass --name"
 fi
 
-mkdir -p "$out"
-out="$(cd "$out" && pwd)"
+# Physical paths (pwd -P above, readlink -m here): the guards below are string
+# comparisons, and a symlinked parent in either argument would slip a project
+# past them and under the recursive clearing further down. Checked before the
+# mkdir, so a refused --out leaves no directory behind either.
+out="$(readlink -m "$out")"
 [[ "$out" != "$project" && "$out" != "$project"/* ]] ||
 	die "--out must be outside --project: the layout is a build product, not a source"
 # The reverse as well: clearing a stale layout below is recursive, so a project
 # living under --out would be deleted with it, sources and all.
 [[ "$project" != "$out"/* ]] ||
 	die "--project must not live under --out: clearing a stale layout would delete it"
+mkdir -p "$out"
 
 # A layout is the complete contents of a package, so anything left over from an
 # earlier build ships with it — a renamed executable, a winmd from a project
