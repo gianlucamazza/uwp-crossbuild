@@ -55,6 +55,8 @@ the library directories with `--link-arg /libpath:…`.
 
 Third-party DLLs are **copied into the package, not rebuilt**. They are already
 compiled for Windows, which is the reason for depending on them.
+`build-app.sh --copy pkg/runtimes/win-x64/native` puts them in the layout, and
+it is repeatable — one for each package.
 
 ## 3. Generate the projection from the project's own `.idl`
 
@@ -80,9 +82,11 @@ uwp-build --uwp --pch pch.h --out myapp.exe \
   -- /DMY_DEFINE=1 /D_CRT_SECURE_NO_WARNINGS
 ```
 
-A project that mixes C and C++ needs two passes: C sources want `/std:c17`, C++
-sources `/std:c++20`. `--pch` is worth it wherever the XAML projection is
-included — around 30 seconds per translation unit becomes around one.
+C and C++ sources go in the same command: `build.sh` compiles a `.c` with
+`UWP_C_STD` (c17) and everything else with `UWP_CXX_STD` (c++20), and the
+precompiled header — a C++ artefact — is applied only to the C++ ones. `--pch`
+is worth it wherever the XAML projection is included: around 30 seconds per
+translation unit becomes around one.
 
 ## 5. Link, package, install
 
@@ -93,9 +97,18 @@ $ objdump -p myapp.exe | grep DllCharacteristics
 DllCharacteristics	00009160        # 0x1000 present
 ```
 
-Then [openappx](https://github.com/gianlucamazza/openappx) takes over: assemble
-the layout (executable, winmd, assets, the copied DLLs, `AppxManifest.xml`),
-`pack`, `sign`, `deploy`.
+A project laid out like `examples/hello-uwp` — one `.idl`, the sources and the
+manifest in one directory — can have steps 3 to 5 done for it in one command,
+DLLs included:
+
+```bash
+uwp-build-app --project uwp --out /tmp/layout \
+  --copy pkg/runtimes/win-x64/native
+```
+
+Either way [openappx](https://github.com/gianlucamazza/openappx) takes over from
+the finished layout (executable, winmd, assets, the copied DLLs,
+`AppxManifest.xml`): `pack`, `sign`, `deploy`.
 
 `Identity/@Publisher` in the manifest must equal the signing certificate's
 subject exactly, so a project's own manifest usually needs that one attribute

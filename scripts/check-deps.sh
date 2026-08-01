@@ -1,6 +1,23 @@
 #!/usr/bin/env bash
 # check-deps.sh — report which prerequisites are present, before a long download.
+#
+#   check-deps.sh
+#
+# Takes no arguments. Exits non-zero if anything the toolchain needs is missing,
+# so it can gate a build script as well as inform a person.
 set -uo pipefail
+
+# The comment block at the top of this file is the usage text.
+usage() {
+	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
+		"$(readlink -f "${BASH_SOURCE[0]}")"
+	exit 0
+}
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
+[[ $# -eq 0 ]] || {
+	echo "error: check-deps.sh takes no arguments" >&2
+	exit 1
+}
 
 ok=0
 missing=()

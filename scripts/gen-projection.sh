@@ -35,9 +35,17 @@ die() {
 value() { # value <flag> <argc>
 	[[ $2 -ge 2 ]] || die "$1 needs a value"
 }
+# The comment block at the top of this file is the usage text. Printing it back
+# means there is one description of the flags, not two that drift apart.
+usage() {
+	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
+		"$(readlink -f "${BASH_SOURCE[0]}")"
+	exit 0
+}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
+	-h | --help) usage ;;
 	--idl) value "$1" $# && idl="$2" && shift 2 ;;
 	--name) value "$1" $# && name="$2" && shift 2 ;;
 	--out) value "$1" $# && out="$2" && shift 2 ;;

@@ -24,12 +24,21 @@ die() {
 	exit 1
 }
 
+# The comment block at the top of this file is the usage text. Printing it back
+# means there is one description of the tools, not two that drift apart.
+usage() {
+	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
+		"$(readlink -f "${BASH_SOURCE[0]}")"
+	exit 0
+}
+
 tool="${1:-}"
 shift || true
 # Check the tool name before the SDK: a typo should not send anyone off to
 # download 1.1 GB before finding out.
 case "$tool" in
 midlrt | makepri | cppwinrt) ;;
+-h | --help) usage ;;
 *) die "usage: $0 <midlrt|makepri|cppwinrt> [args...]" ;;
 esac
 

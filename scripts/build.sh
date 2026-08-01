@@ -14,6 +14,10 @@
 #                  unit, ~1 s through a PCH (measured, see README).
 #     --jobs       parallel compiles (default: nproc)
 #     --link-arg   pass one argument straight to lld-link (repeatable)
+#     --help       this text
+#
+# C and C++ sources can be given together: a .c file is compiled as C, with
+# UWP_C_STD, and everything else as C++ with UWP_CXX_STD.
 #
 # Wraps clang-cl and lld-link with the include and library paths xwin produces,
 # plus the settings a C++/WinRT build cannot do without. See README.md.
@@ -23,6 +27,7 @@ XWIN_ROOT="${UWP_XWIN_ROOT:-$HOME/.cache/uwp-crossbuild/xwin}"
 TARGET="${UWP_TARGET:-x86_64-pc-windows-msvc}"
 ARCH_DIR="${UWP_ARCH_DIR:-x86_64}"
 STD="${UWP_CXX_STD:-c++20}"
+C_STD="${UWP_C_STD:-c17}"
 
 # Resolve through symlinks: these scripts locate their siblings and
 # include/msvc-compat.h relative to themselves, so a symlink on PATH must point
@@ -46,9 +51,17 @@ die() {
 value() { # value <flag> <argc>
 	[[ $2 -ge 2 ]] || die "$1 needs a value"
 }
+# The comment block at the top of this file is the usage text. Printing it back
+# means there is one description of the flags, not two that drift apart.
+usage() {
+	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
+		"$(readlink -f "${BASH_SOURCE[0]}")"
+	exit 0
+}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
+	-h | --help) usage ;;
 	--out) value "$1" $# && out="$2" && shift 2 ;;
 	--pch) value "$1" $# && pch="$2" && shift 2 ;;
 	--jobs) value "$1" $# && jobs="$2" && shift 2 ;;
@@ -82,8 +95,14 @@ command -v clang-cl >/dev/null || die "clang-cl not found"
 compat="$here/../include/msvc-compat.h"
 [[ -f "$compat" ]] || die "missing $compat"
 
+# /std and /EHsc are per-language and added at compile time. A .c file given
+# /std:c++20 does not fail — clang-cl calls it an unused argument and compiles
+# the file with whatever C standard it defaults to, which is not the same as
+# choosing one — so what this buys is a stated standard per language and no
+# warning per translation unit. The part that really did fail is in
+# include/msvc-compat.h, which is force-included into C sources too.
 common=(
-	-target "$TARGET" "/std:$STD" /EHsc /W3
+	-target "$TARGET" /W3
 	"/FI$compat"
 	/imsvc "$XWIN_ROOT/crt/include"
 	/imsvc "$XWIN_ROOT/sdk/include/ucrt"
@@ -125,6 +144,10 @@ fi
 objdir="${UWP_OBJ_DIR:-$out.objs}"
 mkdir -p "$objdir"
 
+# The C++ flags. The precompiled header is C++ by definition, and so is every
+# source that is not a .c.
+cxx=("/std:$STD" /EHsc)
+
 pch_args=()
 if [[ -n "$pch" ]]; then
 	[[ -f "$pch" ]] || die "no such header: $pch"
@@ -134,7 +157,7 @@ if [[ -n "$pch" ]]; then
 	if [[ ! -f "$pchfile" || "$pch" -nt "$pchfile" ]]; then
 		echo "  precompiling $(basename "$pch")"
 		printf '#include "%s"\n' "$(basename "$pch")" >"$objdir/pch.cpp"
-		clang-cl "${common[@]}" "${extra[@]}" /c "$objdir/pch.cpp" \
+		clang-cl "${common[@]}" "${cxx[@]}" "${extra[@]}" /c "$objdir/pch.cpp" \
 			"/Yc$(basename "$pch")" "/Fp$pchfile" "/Fo$objdir/pch.obj" \
 			"/I$(cd "$(dirname "$pch")" && pwd)"
 	fi
@@ -159,7 +182,10 @@ for src in "${sources[@]}"; do
 	flat="${flat#./}"
 	obj="$objdir/${flat//\//_}.obj"
 	objects+=("$obj")
-	clang-cl "${common[@]}" "${extra[@]}" "${pch_args[@]}" /c "$src" -o "$obj" &
+	# A C source takes neither the C++ standard nor the C++ precompiled header.
+	lang=("${cxx[@]}" "${pch_args[@]}")
+	[[ "$src" == *.c ]] && lang=("/std:$C_STD")
+	clang-cl "${common[@]}" "${lang[@]}" "${extra[@]}" /c "$src" -o "$obj" &
 	pids+=($!)
 	# A plain `wait -n` loop would be neater but needs bash 4.3+ semantics that
 	# differ across the versions in the wild; batching is enough here.

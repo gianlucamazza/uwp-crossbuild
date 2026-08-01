@@ -11,14 +11,28 @@
 #
 #     --lower      add lowercase aliases   (WinRTBase.idl -> winrtbase.idl)
 #     --canonical  add namespace-cased ones (windows.foundation.h -> Windows.Foundation.h)
+#     --help       this text
 set -euo pipefail
 
-target="${1:?usage: $0 <directory> [--lower|--canonical]}"
-mode="${2:---lower}"
-[[ -d "$target" ]] || {
-	echo "error: no such directory: $target" >&2
+die() {
+	echo "error: $*" >&2
 	exit 1
 }
+# The comment block at the top of this file is the usage text. Printing it back
+# means there is one description of the modes, not two that drift apart.
+usage() {
+	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
+		"$(readlink -f "${BASH_SOURCE[0]}")"
+	exit 0
+}
+[[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
+
+# ${1:?…} would report this as a shell error naming a line number. Everything
+# else here says "error: …" and names the fix.
+[[ $# -ge 1 ]] || die "a directory is required — see --help"
+target="$1"
+mode="${2:---lower}"
+[[ -d "$target" ]] || die "no such directory: $target"
 
 case "$mode" in
 --lower)
@@ -76,8 +90,5 @@ for path in sorted(directory.iterdir()):
 print(f"{created} canonical-case aliases in {directory} ({removed} stale removed)")
 PY
 	;;
-*)
-	echo "error: unknown mode $mode" >&2
-	exit 1
-	;;
+*) die "unknown mode $mode — expected --lower or --canonical" ;;
 esac

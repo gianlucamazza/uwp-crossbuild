@@ -64,6 +64,7 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 | resources → `resources.pri`   | `makepri.exe` (32-bit) under Wine                     | ✅ (optional — see below)      |
 | App-container executable      | `lld-link /appcontainer`                              | ✅ `DllCharacteristics` 0x1000 |
 | An unmodified VS source tree  | `include/msvc-compat.h`, force-included               | ✅ 216/216 of a real project   |
+| C and C++ in one project      | `build.sh`, one pass                                  | ✅ per-language standards      |
 | Link a whole application      | `lld-link`                                            | ✅ 7.5 MB PE32+                |
 | Package, sign, deploy         | [openappx](https://github.com/gianlucamazza/openappx) | ✅ installed on an Xbox        |
 
@@ -216,6 +217,9 @@ examples/hello-uwp/          a UWP application in the shape that cross-compiles
 tests/run-tests.sh           everything checkable without downloading the SDK
 docs/porting-a-vcxproj.md    taking a real Visual Studio project through all of it
 ```
+
+Every script takes `--help` and prints its own usage; installed, that is
+`uwp-build --help` and so on.
 
 ## Releasing
 

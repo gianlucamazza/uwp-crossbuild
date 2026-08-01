@@ -1,7 +1,16 @@
 #!/usr/bin/env bash
 # build-app.sh — an example directory in, a package layout out.
 #
-#   build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
+#   build-app.sh --project examples/hello-uwp --out /tmp/hello-layout \
+#                [--name NAME] [--copy DIR] [--no-pri]
+#
+#     --copy DIR   copy the contents of DIR into the layout (repeatable). This
+#                  is how precompiled third-party DLLs get into the package: a
+#                  native NuGet package's runtimes/win-x64/native, say. They are
+#                  already built for Windows, which is the reason for using them.
+#     --no-pri     skip resources.pri, which is not needed to install
+#     --name NAME  override the executable and namespace name
+#     --help       this text
 #
 # Drives the whole chain: midlrt and cppwinrt under Wine for the metadata and the
 # projection, clang-cl for the executable, makepri for the resources. The result
@@ -21,6 +30,7 @@ project=""
 out=""
 name=""
 no_pri=0
+copy_dirs=()
 die() {
 	echo "error: $*" >&2
 	exit 1
@@ -31,12 +41,21 @@ step() { printf '\n==> %s\n' "$*"; }
 value() { # value <flag> <argc>
 	[[ $2 -ge 2 ]] || die "$1 needs a value"
 }
+# The comment block at the top of this file is the usage text. Printing it back
+# means there is one description of the flags, not two that drift apart.
+usage() {
+	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
+		"$(readlink -f "${BASH_SOURCE[0]}")"
+	exit 0
+}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
+	-h | --help) usage ;;
 	--project) value "$1" $# && project="$2" && shift 2 ;;
 	--out) value "$1" $# && out="$2" && shift 2 ;;
 	--name) value "$1" $# && name="$2" && shift 2 ;;
+	--copy) value "$1" $# && copy_dirs+=("$2") && shift 2 ;;
 	--no-pri) no_pri=1 && shift ;;
 	*) die "unknown argument $1" ;;
 	esac
@@ -46,6 +65,10 @@ done
 [[ -f "$project/app.idl" ]] || die "no app.idl in $project"
 [[ -f "$project/AppxManifest.xml" ]] || die "no AppxManifest.xml in $project"
 project="$(cd "$project" && pwd)"
+# Checked now rather than after a ten-minute compile.
+for dir in ${copy_dirs[@]+"${copy_dirs[@]}"}; do
+	[[ -d "$dir" ]] || die "--copy: no such directory: $dir"
+done
 
 if [[ -z "$name" ]]; then
 	name=$(sed -n 's/.*Executable="\([^"]*\)\.exe".*/\1/p' "$project/AppxManifest.xml" | head -1)
@@ -84,9 +107,11 @@ step "Metadata and projection ($name.winmd)"
 "$here/gen-projection.sh" --idl "$project/app.idl" --name "$name" --out "$gen" >/dev/null
 
 step "Compiling"
+# .c as well as .cpp: build.sh compiles each with the standard for its language,
+# and a UWP application wrapping a C library is an ordinary shape.
 sources=()
-for f in "$project"/*.cpp; do [[ -f "$f" ]] && sources+=("$f"); done
-[[ ${#sources[@]} -gt 0 ]] || die "no .cpp files in $project"
+for f in "$project"/*.cpp "$project"/*.c; do [[ -f "$f" ]] && sources+=("$f"); done
+[[ ${#sources[@]} -gt 0 ]] || die "no .cpp or .c files in $project"
 # A project with a pch.h gets it precompiled — the difference between ~30 s and
 # ~1 s per translation unit.
 build_args=(--uwp --out "$out/$name.exe")
@@ -99,6 +124,13 @@ cp "$project/AppxManifest.xml" "$out/"
 [[ -d "$project/Assets" ]] && cp -r "$project/Assets" "$out/"
 # The manifest's EntryPoint is resolved against this file at activation time.
 cp "$gen/$name.winmd" "$out/"
+# Precompiled dependencies — a native NuGet package's DLLs — are copied, not
+# built. Before makepri, because it indexes the layout as it finds it, and the
+# loader looks for them beside the executable.
+for dir in ${copy_dirs[@]+"${copy_dirs[@]}"}; do
+	echo "  copying $(basename "$dir")/"
+	cp -r "$dir/." "$out/"
+done
 
 if [[ $no_pri -eq 0 ]]; then
 	step "Resources"

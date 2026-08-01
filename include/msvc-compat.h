@@ -18,7 +18,16 @@
 //    luck, and coroutine support is silently compiled out. The symptom is a
 //    perfectly ordinary IAsyncAction reported as "this function cannot be a
 //    coroutine: ... has no member named 'promise_type'", pointing at your code.
-#include <version>
+//
+//    Guarded because this header is force-included into every translation unit,
+//    and a project that mixes C with C++ — a UWP application wrapping a C
+//    library — has some that are C. <version> is a C++ header, and a C
+//    translation unit stops on it with `fatal error: 'version' file not found`,
+//    blaming a file the project never included. <windows.h> below is C too, and
+//    the GetCurrentTime clash is worth undoing in both languages.
+#ifdef __cplusplus
+    #include <version>
+#endif
 
 // 2. GetCurrentTime. winbase.h defines it as a macro; XAML's Timeline declares
 //    a method by that name, so a projection header stops parsing partway

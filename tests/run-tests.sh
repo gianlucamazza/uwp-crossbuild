@@ -60,6 +60,21 @@ fails_with() { # fails_with <name> <expected-substring> <command...>
 	fi
 }
 
+succeeds_with() { # succeeds_with <name> <expected-substring> <command...>
+	local name="$1" expect="$2"
+	shift 2
+	local out status
+	out="$("$@" 2>&1)"
+	status=$?
+	if [[ $status -ne 0 ]]; then
+		no "$name" "expected exit 0, got $status: ${out:-<empty>}"
+	elif [[ "$out" != *"$expect"* ]]; then
+		no "$name" "expected '$expect', got: ${out:-<empty>}"
+	else
+		ok "$name"
+	fi
+}
+
 echo "fix-header-case.sh --canonical"
 tmp="$(mktemp -d)"
 # Capitalising each segment would give "Applicationmodel" and
@@ -120,6 +135,10 @@ assert "mixed case gets a lowercase alias" "no winrtbase.idl symlink" \
 rm -rf "$tmp"
 fails_with "a missing directory is refused" "no such directory" \
 	"$scripts/fix-header-case.sh" /nonexistent-directory --lower
+fails_with "no directory at all is an error, not a shell diagnostic" \
+	"a directory is required" "$scripts/fix-header-case.sh"
+fails_with "an unknown mode names the two that exist" "expected --lower" \
+	"$scripts/fix-header-case.sh" /tmp --sideways
 
 echo "build.sh guards"
 tmp="$(mktemp -d)"
@@ -137,6 +156,16 @@ fails_with "a flag with no value says so" "--out needs a value" \
 fails_with "--jobs takes a positive integer" "--jobs must be a positive integer" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe --jobs 0 "$tmp/a.cpp"
 rm -rf "$tmp"
+
+echo "--help"
+# Installed as uwp-build and friends, where the header comment nobody can see is
+# the only documentation. Each script prints its own, and exits 0 doing it.
+for script in "$scripts"/*.sh "$packaging"/publish-aur.sh; do
+	succeeds_with "$(basename "$script") --help prints its usage" \
+		"$(basename "$script") —" "$script" --help
+done
+fails_with "check-deps.sh rejects arguments rather than ignoring them" \
+	"takes no arguments" "$scripts/check-deps.sh" --canonical
 
 echo "build-app.sh guards"
 tmp="$(mktemp -d)"
@@ -166,6 +195,11 @@ fails_with "a non-empty --out with no manifest is not cleared" "refusing to clea
 	"$scripts/build-app.sh" --project "$tmp" --out "$elsewhere"
 assert "the untouched directory kept its contents" "the file was deleted" \
 	test -f "$elsewhere/precious"
+# --copy carries precompiled third-party DLLs into the package. A path that is
+# not there is worth saying before a ten-minute compile, not after.
+fails_with "--copy checks its directory before building" "no such directory" \
+	"$scripts/build-app.sh" --project "$tmp" --out "$elsewhere/layout" \
+	--copy /nonexistent-dlls
 rm -rf "$tmp" "$elsewhere"
 
 echo "gen-projection.sh and gen-resources.sh guards"
