@@ -83,7 +83,13 @@ for msi in "${MSIS[@]}"; do
 	# not, so keep the output in a log rather than discarding it: without this a
 	# failure here has no diagnosis at all.
 	log="$WORK/msiexec-${msi// /_}.log"
-	WINEDEBUG=-all wine msiexec /a "$WORK/layout/Installers/$msi" /qn \
+	# The package goes in as a Windows path, like every other argument a Windows
+	# tool is given here. An administrative install copies the package into
+	# TARGETDIR by appending the path it was handed, so a Unix path becomes
+	# TARGETDIR\home\you\... — directories that do not exist — and the install
+	# dies on its first file with ERROR_PATH_NOT_FOUND, naming neither the path
+	# nor the reason. Observed with Wine 11.14 and SDK 10.0.22621.
+	WINEDEBUG=-all wine msiexec /a "$(winepath -w "$WORK/layout/Installers/$msi")" /qn \
 		TARGETDIR="$(winepath -w "$SDK_ROOT")" >"$log" 2>&1 ||
 		die "administrative install failed for $msi
 $(tail -20 "$log")
