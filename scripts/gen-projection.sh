@@ -10,8 +10,9 @@
 #   module.g.cpp    the cppwinrt 2.x factory aggregator, compiled once
 #   winrt/          projection headers for the types the .idl declares
 #
-# --stubs writes starter App.h / App.cpp somewhere separate; without it they
-# would land next to the generated files and shadow the ones you wrote.
+# --stubs picks where the starter App.h / App.cpp land (default: <out>/stubs).
+# They default out of the way because next to the generated files they would
+# shadow the ones you wrote.
 set -euo pipefail
 
 # Resolve through symlinks: these scripts locate their siblings and
@@ -52,7 +53,11 @@ done
 
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
+# Absolute before the cd below: a relative --stubs would otherwise be resolved
+# against $out and land at <out>/<stubs> instead of where it was asked for.
 stubs="${stubs:-$out/stubs}"
+mkdir -p "$stubs"
+stubs="$(cd "$stubs" && pwd)"
 idl="$(cd "$(dirname "$idl")" && pwd)/$(basename "$idl")"
 
 # Wine truncates a path past MAX_PATH without saying so: midlrt then reports the
@@ -71,7 +76,6 @@ cd "$out"
 # -component is what emits App.g.h and module.g.cpp; without it cppwinrt only
 # writes the projection headers. Its argument is where the starter App.h/App.cpp
 # go, and they default out of the way because they would shadow real sources.
-mkdir -p "$stubs"
 "$here/wine-tool.sh" cppwinrt \
 	-input "$name.winmd" -reference "$(winepath -w "$UNION")" \
 	-output . -component "$(winepath -w "$stubs")" -prefix
