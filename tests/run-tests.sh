@@ -39,6 +39,12 @@ assert() { # assert <name> <detail-on-failure> <test-expression...>
 
 is_link_to() { [[ -L "$1" && "$(readlink "$1")" == "$2" ]]; }
 
+skipped=0
+skip() { # skip <name> <why>
+	printf '  skip %s (%s)\n' "$1" "$2"
+	skipped=$((skipped + 1))
+}
+
 fails_with() { # fails_with <name> <expected-substring> <command...>
 	local name="$1" expect="$2"
 	shift 2
@@ -177,12 +183,19 @@ fails_with "an unknown tool is refused" "usage:" \
 fails_with "a missing SDK names fetch-sdk.sh" "run scripts/fetch-sdk.sh" \
 	env UWP_SDK_ROOT=/nonexistent "$scripts/wine-tool.sh" midlrt /?
 # The SDK is there but the tools are not where UWP_SDK_VERSION says: without a
-# guard this is whatever Wine prints about a missing executable.
+# guard this is whatever Wine prints about a missing executable. Only reachable
+# with wine installed — the environment check runs first, and rightly so: a
+# suggestion to try another SDK version is no use to someone who cannot run any.
 tmp="$(mktemp -d)"
 mkdir -p "$tmp/Windows Kits/10/bin/10.0.99999.0"
-fails_with "an SDK without the tool for this version says which versions exist" \
-	"10.0.99999.0" \
-	env UWP_SDK_ROOT="$tmp" "$scripts/wine-tool.sh" midlrt /?
+if ! command -v wine >/dev/null; then
+	skip "an SDK without the tool for this version says which versions exist" \
+		"wine is not installed"
+else
+	fails_with "an SDK without the tool for this version says which versions exist" \
+		"10.0.99999.0" \
+		env UWP_SDK_ROOT="$tmp" "$scripts/wine-tool.sh" midlrt /?
+fi
 rm -rf "$tmp"
 
 echo "publish-aur.sh guards"
@@ -225,5 +238,5 @@ assert "<version> comes before <windows.h>" "wrong order in msvc-compat.h" \
 assert "GetCurrentTime is undefined after windows.h" "no #undef GetCurrentTime" \
 	grep -q "^#undef GetCurrentTime" "$compat"
 
-printf '\n%d passed, %d failed\n' "$passed" "$failed"
+printf '\n%d passed, %d failed, %d skipped\n' "$passed" "$failed" "$skipped"
 [[ $failed -eq 0 ]]
