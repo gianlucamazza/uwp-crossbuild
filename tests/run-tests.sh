@@ -230,6 +230,20 @@ else
 		env UWP_SDK_ROOT="$tmp" "$scripts/wine-tool.sh" midlrt /?
 fi
 rm -rf "$tmp"
+# The tool is there but the contracts are not: midlrt would otherwise run with
+# zero /reference arguments and fail much later on unresolved metadata.
+tmp="$(mktemp -d)"
+mkdir -p "$tmp/Windows Kits/10/bin/10.0.22621.0/x64"
+touch "$tmp/Windows Kits/10/bin/10.0.22621.0/x64/midlrt.exe"
+if ! command -v wine >/dev/null; then
+	skip "midlrt without contract winmds names the References directory" \
+		"wine is not installed"
+else
+	fails_with "midlrt without contract winmds names the References directory" \
+		"no contract .winmd" \
+		env UWP_SDK_ROOT="$tmp" "$scripts/wine-tool.sh" midlrt /?
+fi
+rm -rf "$tmp"
 
 echo "publish-aur.sh guards"
 fails_with "a version is required" "--version is required" "$packaging/publish-aur.sh"
