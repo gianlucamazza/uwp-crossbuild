@@ -18,6 +18,24 @@ a specific version, and knowing which is the whole point of writing it down.
   `AppxManifest.xml` nor the executable it is about to build. A layout is the
   package's contents: whatever survives from an earlier build — an executable
   under a name the project no longer uses — ships with it.
+- **`build-app.sh --copy DIR`**, repeatable: the contents of DIR go into the
+  layout. Precompiled third-party DLLs — a native NuGet package's
+  `runtimes/win-x64/native` — are copied, not built, and until now the recipe
+  said so while no script did it.
+- **C and C++ compile in one pass.** `build.sh` gives a `.c` source `UWP_C_STD`
+  (c17) and everything else `UWP_CXX_STD` (c++20), and applies the precompiled
+  header only to the C++ ones; `build-app.sh` picks up `.c` files too. What made
+  this impossible before was `msvc-compat.h`, force-included into every
+  translation unit: it opens with `<version>`, and a C source stopped on `fatal
+error: 'version' file not found`, blaming a file the project never included.
+  That include is now guarded by `__cplusplus`.
+- **`--help` on every script**, printing the comment block at the top of the
+  file, which is the only documentation an installed `uwp-build` has. One
+  description, so it cannot drift from the flags.
+- The `full-build` job runs monthly as well as on request, and without the SDK
+  cache. Every workaround here is tied to a version of LLVM, Wine, xwin or the
+  SDK; nothing else notices when one of them moves — or when one is fixed and
+  the workaround could go.
 
 ### Fixed
 
@@ -55,7 +73,14 @@ a specific version, and knowing which is the whole point of writing it down.
   needs, counts a missing MSXML6 as missing, and prints 7-Zip's version (it has
   no `--version`, so the field was blank).
 - `gen-resources.sh` removes the temporary directory it creates for makepri's
-  config.
+  config, and refuses an empty `resources.pri` — makepri can exit 0 having
+  written one, and a package with it installs.
+- **`curl` without `--fail` saved the server's error page as the download and
+  exited 0.** A 404 from NuGet — the wrong C++/WinRT version, say — became a
+  200-byte "package" that failed inside 7z, and an interrupted download stayed
+  in the cache for every later run to reuse. `fetch-sdk.sh` downloads to a
+  temporary name and renames on success; CI passes `--fail` for xwin and shfmt
+  too.
 - CI's uninstall check looked only for leftover files, and what `uninstall`
   removes is symlinks.
 - `aur.yml` creates the private key file at 0600 rather than narrowing it after
