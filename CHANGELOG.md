@@ -18,6 +18,13 @@ a specific version, and knowing which is the whole point of writing it down.
   `AppxManifest.xml` nor the executable it is about to build. A layout is the
   package's contents: whatever survives from an earlier build — an executable
   under a name the project no longer uses — ships with it.
+- `build-app.sh --jobs` and `--language`, passed through to `build.sh` and
+  `gen-resources.sh`. Both flags existed below and could not be reached from
+  the one driver that runs both: a manifest declaring a non-`en-US` resource
+  language silently got the `en-US` default config.
+- An Environment table in the README — every `UWP_*` override was undocumented.
+  `UWP_CPPWINRT_EXE` joins the prefix; `CPPWINRT_EXE`, its original name, still
+  works.
 
 ### Fixed
 
@@ -75,6 +82,26 @@ a specific version, and knowing which is the whole point of writing it down.
   before 4.4 counts as unbound under `set -u` when the array is empty — so a
   plain `build.sh --out a.exe src.cpp`, with no `--`, died on those versions.
   Guarded with `${arr[@]+…}`, the way `include_dirs` and `pids` already were.
+- **The containment guards compared logical paths.** A layout reached through a
+  symlinked parent passed both checks, and clearing it deleted the project
+  inside the real one, sources and all. Both paths are resolved physically now,
+  and before the mkdir — a refused `--out` no longer leaves a directory behind.
+- **`make uninstall` with a space in `PREFIX` ran `rm -rf` on the wrong
+  directory** — the recipes word-split their paths. Everything is quoted now.
+- **Two sources could still meet in one object.** The `/`→`_` mangling is not
+  injective: `src/util.cpp` against `src_util.cpp`, or a source named `pch.cpp`
+  against the PCH's own object. Object names carry a checksum of the path now.
+- **`fix-header-case.sh --canonical` deleted every symlink in the directory**,
+  `--lower`'s aliases and a user's own links included. Only mixed-case aliases
+  of its own shape are removed now.
+- A relative `gen-projection.sh --stubs` was resolved after the cd into
+  `--out`, so the header's own example put the starter files at `gen/gen/stubs`.
+- midlrt ran with no `/reference` at all when the contract winmds were missing,
+  failing much later on unresolved metadata. It dies naming the References
+  directory now, the way the other guards do.
+- A flag given another flag as its value — `build.sh --out --uwp` — took it
+  literally and wrote an executable named `--uwp`, without the app container.
+  Every parser refuses flag-shaped values.
 
 ## 0.1.0 — 2026-08-01
 

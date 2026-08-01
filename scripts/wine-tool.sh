@@ -93,7 +93,9 @@ run_makepri() {
 }
 
 run_cppwinrt() {
-	local exe="${CPPWINRT_EXE:-$SDK_ROOT/cppwinrt/bin/cppwinrt.exe}"
+	# UWP_CPPWINRT_EXE, prefixed like every other override here; CPPWINRT_EXE,
+	# its original name, still works.
+	local exe="${UWP_CPPWINRT_EXE:-${CPPWINRT_EXE:-$SDK_ROOT/cppwinrt/bin/cppwinrt.exe}}"
 	[[ -f "$exe" ]] || die "cppwinrt.exe not found at $exe — run fetch-sdk.sh"
 	WINEDEBUG="${WINEDEBUG:--all}" exec wine "$exe" "$@"
 }

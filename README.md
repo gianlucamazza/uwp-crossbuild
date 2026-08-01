@@ -137,6 +137,26 @@ from Microsoft's CDN at run time under the SDK licence. CI's manual `full-build`
 job keeps that download in the repository's own ephemeral cache between runs;
 nothing is ever published as an artefact, committed, or shipped in a package.
 
+## Environment
+
+Every location and version the scripts assume can be overridden:
+
+| Variable               | Default                                | What it changes                                                  |
+| ---------------------- | -------------------------------------- | ---------------------------------------------------------------- |
+| `UWP_XWIN_ROOT`        | `~/.cache/uwp-crossbuild/xwin`         | where `xwin splat` put the CRT and SDK headers and libraries     |
+| `UWP_SDK_ROOT`         | `~/.cache/uwp-crossbuild/sdk`          | where `fetch-sdk.sh` extracts the SDK tools and metadata         |
+| `UWP_SDK_WORK`         | `~/.cache/uwp-crossbuild/work`         | the installer download and layout cache                          |
+| `UWP_SDK_VERSION`      | `10.0.22621.0`                         | the version directory the tools and metadata live under          |
+| `UWP_SDK_URL`          | Microsoft's fwlink for that SDK        | the web installer `fetch-sdk.sh` downloads                       |
+| `UWP_CPPWINRT_VERSION` | read from xwin's `base.h`              | the cppwinrt.exe pin — must match the `winrt/` headers (item 13) |
+| `UWP_CPPWINRT_EXE`     | `$UWP_SDK_ROOT/cppwinrt/bin/…`         | the cppwinrt.exe Wine runs                                       |
+| `UWP_TARGET`           | `x86_64-pc-windows-msvc`               | clang's `-target`                                                |
+| `UWP_ARCH_DIR`         | `x86_64`                               | the architecture subdirectory of the CRT and SDK libraries       |
+| `UWP_CXX_STD`          | `c++20`                                | `/std:` for the compile — c++17 cannot work (item 1)             |
+| `UWP_OBJ_DIR`          | `<out>.objs` (`<out>.build` for a layout) | objects, PCH and generated files                              |
+
+`wine-tool.sh` also honours `WINEDEBUG`, defaulting it to `-all`.
+
 ## Fourteen things that will waste your afternoon
 
 Every one of these fails while pointing somewhere else. The scripts handle them;
