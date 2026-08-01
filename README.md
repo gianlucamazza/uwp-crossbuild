@@ -82,7 +82,27 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 - **x64 only.** ARM64 has never been tried.
 - **No `.xaml` files, ever.** The XAML compiler has no Linux equivalent and does
   not run under Wine. Build the UI in code, as `examples/hello-uwp` does.
-- **The PCH is ~190 MB** per project, in the object directory.
+- **The UWP API partition is not enforced at compile time.** A call to a
+  desktop-only win32 API compiles and links cleanly here and surfaces only at
+  certification or at runtime, because `/DWINAPI_FAMILY=WINAPI_FAMILY_APP` is
+  deliberately left out — item 7 of
+  [the list below](#fourteen-things-that-will-waste-your-afternoon) is why it
+  cannot be on by default.
+  The app container is applied at link time only; to audit a translation unit,
+  pass the define yourself via `--`.
+- **`build-app.sh` builds exactly one shape of project.** The idl must be named
+  `app.idl`, sources are the top-level `*.cpp` of the project directory — no
+  subdirectories, no `.c` — and the manifest is read with a `sed` regex, not an
+  XML parser. Anything larger is driven by hand through `build.sh`, which is
+  what [docs/porting-a-vcxproj.md](docs/porting-a-vcxproj.md) does; the missing
+  `.vcxproj` reader is under [Next](#next).
+- **One language standard per invocation.** `build.sh` passes a single `/std:`,
+  so a project mixing C and C++ needs two passes — `/std:c17` for the C sources,
+  `/std:c++20` for the rest — and the link at the end.
+- **The PCH is ~190 MB** per project, in the object directory. It is rebuilt
+  only when `pch.h` itself changes: editing a header it *includes* goes
+  unnoticed, deliberately — everything below it is SDK-stable — and the remedy
+  when that assumption fails is deleting the `.pch`.
 
 ## Build times
 
