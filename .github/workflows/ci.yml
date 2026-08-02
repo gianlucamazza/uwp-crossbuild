@@ -117,7 +117,7 @@ jobs:
         # download path still works, and a cache hit is exactly what would hide
         # Microsoft moving the installer or changing the layout.
         if: github.event_name != 'schedule'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/uwp-crossbuild
           key: sdk-${{ hashFiles('scripts/fetch-sdk.sh') }}
