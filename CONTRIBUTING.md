@@ -29,7 +29,7 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
 ## What this repository is
 
-A record of eighteen ways the Windows SDK and its device fail on Linux, with a
+A record of nineteen ways the Windows SDK and its device fail on Linux, with a
 script wrapped around each. That framing decides most questions:
 
 - **Every workaround says which failure it avoids.** A flag whose purpose is not

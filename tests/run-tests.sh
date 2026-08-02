@@ -412,6 +412,21 @@ lacks "and the Debug one does not" "/Od" \
 	"$read_vcxproj" "$vcxproj" --field options
 succeeds_with "--config Debug picks the other one" "/Od" \
 	"$read_vcxproj" "$vcxproj" --config Debug --field options
+# The DLL runtimes cannot work in an app container: the store CRT import
+# libraries do not exist to link against, so /MD would import the desktop
+# VCRUNTIME140.dll and activation dies as 0x80270300 (README's gotcha list,
+# item 19). The one place the evaluator changes MSBuild's answer instead of
+# mirroring or refusing it — both branches are pinned here.
+succeeds_with "the DLL runtime is made static inside an app container" "/MT" \
+	"$read_vcxproj" "$vcxproj" --field options
+lacks "and /MD does not survive" "/MD" \
+	"$read_vcxproj" "$vcxproj" --field options
+succeeds_with "the Debug runtime likewise" "/MTd" \
+	"$read_vcxproj" "$vcxproj" --config Debug --field options
+# A global property wins over the file, so the passthrough branch needs no
+# second fixture: outside the container the DLL runtime is honoured.
+succeeds_with "outside the container the DLL runtime is honoured" "/MD" \
+	"$read_vcxproj" "$vcxproj" --property AppContainerApplication=false --field options
 succeeds_with "ObjectFileName and MultiProcessorCompilation are dropped" "/EHa" \
 	"$read_vcxproj" "$vcxproj" --field options
 succeeds_with "the manifest whose condition holds is the one chosen" "AppxManifest.xml" \
