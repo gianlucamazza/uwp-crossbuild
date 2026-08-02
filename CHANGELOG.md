@@ -7,6 +7,45 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
+## Unreleased
+
+The three gaps 0.2.0 left tracked, closed: the `.vcxproj` path is exercised in
+CI, ARM64 has now been tried, and `resources.pri` is checked as a container
+rather than as a byte count.
+
+### Added
+
+- **`examples/hello-uwp/hello-uwp.vcxproj`** — the same example in the shape
+  Visual Studio keeps a project (#4). `build-app.sh` still reads the directory
+  and ignores it; `build-project.sh` reads it, and the `full-build` workflow now
+  builds both and validates both layouts. The tests pin the two forms to each
+  other — a source listed in one and not the other builds two different
+  applications under the same name.
+- **ARM64** (#5). With the aarch64 libraries splatted, `build-project.sh
+--platform ARM64` — or `UWP_TARGET`/`UWP_ARCH_DIR` for the other scripts —
+  drives the same pipeline to an `IMAGE_FILE_MACHINE_ARM64` image with the
+  app-container bit. Verified by reading the PE header on both examples; no
+  device has run it, which the README's first Known limit already covers.
+  `--platform` now also refuses what it cannot compile for: it selects the
+  compiler target along with the MSBuild conditions, because answering only
+  the conditions would build x64 objects under ARM64 settings without a word.
+
+### Fixed
+
+- **The winmd is named after the namespace the `.idl` declares, not after the
+  `.idl` file.** `build-project.sh` used the file name; the manifest's
+  `EntryPoint` is resolved against `<namespace>.winmd`, so an `app.idl`
+  declaring `namespace hello` shipped an `app.winmd` the loader would never
+  consult — a package that installs and fails to launch. Found by giving the
+  in-repo example a `.vcxproj`: its `app.idl` is exactly that shape, and the
+  corpus projects all happened to name the file after the namespace. An `.idl`
+  declaring no namespace is refused before any SDK tool runs.
+- **`resources.pri` is validated as a container, not as a byte count** (#6).
+  The PRI format frames itself — `mrm_pri2` in the first and last 8 bytes, the
+  total size declared at offset 0xc (SDK 10.0.22621 output) — so a truncated or
+  unrecognisable file now stops `gen-resources.sh`, where before anything
+  non-empty passed. Whether the _contents_ are right still needs a loader.
+
 ## 0.2.0 — 2026-08-01
 
 An existing Visual Studio project builds here without being described a second

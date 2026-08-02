@@ -73,6 +73,7 @@ scripts/build-project.sh --project uwp/app.vcxproj --out /tmp/layout
 | An unmodified VS source tree  | `include/msvc-compat.h`, force-included               | ✅ 216/216 of a real project   |
 | C and C++ in one project      | `build.sh`, one pass                                  | ✅ per-language standards      |
 | Reading a `.vcxproj`          | `read-vcxproj.py`, an MSBuild subset                  | ✅ or a refusal, never a guess |
+| ARM64                         | `--platform ARM64`, same pipeline                     | ✅ ARM64 PE — see Known limits |
 | Link a whole application      | `lld-link`                                            | ✅ 7.5 MB PE32+                |
 | Package, sign, deploy         | [openappx](https://github.com/gianlucamazza/openappx) | ✅ installed on an Xbox        |
 
@@ -88,7 +89,14 @@ scripts/build-project.sh --project uwp/app.vcxproj --out /tmp/layout
   without it, both variants installed. Kept in `build-app.sh` by default because
   localised resources need it at runtime, which is not testable while launching
   is; `--no-pri` skips the step, and with it the only reason makepri exists here.
-- **x64 only.** ARM64 has never been tried.
+- **ARM64 builds, and has never executed.** With the aarch64 libraries splatted
+  (`xwin --arch x86_64 --arch aarch64 …`), `build-project.sh --platform ARM64`
+  — or `UWP_TARGET=aarch64-pc-windows-msvc UWP_ARCH_DIR=aarch64` for the other
+  scripts — produces an `IMAGE_FILE_MACHINE_ARM64` image with the app-container
+  bit, through the same midlrt/cppwinrt/makepri pipeline. Verified by reading
+  the PE header; per the first limit, no device has run it. Re-run
+  `fix-header-case.sh --canonical` after any re-splat: xwin rewrites the
+  cppwinrt headers and undoes the aliases.
 - **No `.xaml` files, ever.** The XAML compiler has no Linux equivalent and does
   not run under Wine. Build the UI in code, as `examples/hello-uwp` does.
 - **The PCH is ~190 MB** per project, in the object directory.
@@ -301,17 +309,8 @@ from any of those downloads belongs in a commit.
   what is missing: a compiler setting with no entry in the mapping table, a
   property only Visual Studio supplies, a target that generates sources. Each is
   a table row and a fixture, not an investigation.
-- **An example in `.vcxproj` shape**, so that CI can build one
-  ([#4](https://github.com/gianlucamazza/uwp-crossbuild/issues/4)). Today
-  `build-project.sh` is covered by fixtures for what it reads and by a corpus of
-  real projects for what it builds — and that corpus lives outside this
-  repository, so no workflow can run it.
 - **A device that can actually launch a sideloaded app.** This one cannot — not
   even Microsoft Edge — so nothing built here has been seen to run. That needs
-  different hardware, not a different package.
-- **ARM64**, if a target ever needs it
-  ([#5](https://github.com/gianlucamazza/uwp-crossbuild/issues/5)) — the
-  variables are there and no build has ever used them.
-- **`resources.pri` beyond "not empty"**
-  ([#6](https://github.com/gianlucamazza/uwp-crossbuild/issues/6)), which needs
-  something that consumes the result.
+  different hardware, not a different package. It is also what would turn two
+  header-level verifications into real ones: the ARM64 image, and whether the
+  loader accepts what `makepri` writes.
