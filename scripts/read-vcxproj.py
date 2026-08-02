@@ -832,6 +832,8 @@ class Description:
                 flags.append("/WX" if value == "true" else "")
             elif name == "DisableSpecificWarnings":
                 flags += [f"/wd{w}" for w in semicolon_list(value)]
+            elif name == "RuntimeTypeInfo":
+                flags.append({"true": "/GR", "false": "/GR-"}.get(value, ""))
             elif name == "CompileAsWinRT":
                 if value != "false":
                     raise Refusal(
@@ -878,6 +880,21 @@ class Description:
                 options += [o for o in value.split() if not o.startswith("%")]
             elif name in ("IgnoreSpecificDefaultLibraries",):
                 options += [f"/nodefaultlib:{lib}" for lib in semicolon_list(value)]
+            elif name == "GenerateWindowsMetadata":
+                # The winmd comes from gen-projection.sh, named after the
+                # namespace the .idl declares; the linker never writes one
+                # here. The template emits false, which is the truth already.
+                if value not in ("false", ""):
+                    raise Refusal(
+                        "GenerateWindowsMetadata is true: the winmd comes from "
+                        "gen-projection.sh here, the linker does not write one"
+                    )
+            elif name == "OptimizeReferences":
+                if value in ("true", "false"):
+                    options.append("/opt:ref" if value == "true" else "/opt:noref")
+            elif name == "EnableCOMDATFolding":
+                if value in ("true", "false"):
+                    options.append("/opt:icf" if value == "true" else "/opt:noicf")
             else:
                 raise Refusal(
                     f"Link <{name}>{value}</{name}> has no equivalent here. "

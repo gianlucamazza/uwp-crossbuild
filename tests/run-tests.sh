@@ -427,6 +427,16 @@ succeeds_with "the Debug runtime likewise" "/MTd" \
 # second fixture: outside the container the DLL runtime is honoured.
 succeeds_with "outside the container the DLL runtime is honoured" "/MD" \
 	"$read_vcxproj" "$vcxproj" --property AppContainerApplication=false --field options
+# Rows the default Visual Studio template emits: RTTI off, and the Release
+# linker's /opt pair — lld-link implements both.
+succeeds_with "RuntimeTypeInfo false is /GR-" "/GR-" \
+	"$read_vcxproj" "$vcxproj" --field options
+succeeds_with "the template's Release link settings become /opt" "/opt:ref" \
+	"$read_vcxproj" "$vcxproj" --field link.options
+succeeds_with "COMDAT folding likewise" "/opt:icf" \
+	"$read_vcxproj" "$vcxproj" --field link.options
+lacks "a Debug build asks for neither" "/opt:" \
+	"$read_vcxproj" "$vcxproj" --config Debug --field link.options
 succeeds_with "ObjectFileName and MultiProcessorCompilation are dropped" "/EHa" \
 	"$read_vcxproj" "$vcxproj" --field options
 succeeds_with "the manifest whose condition holds is the one chosen" "AppxManifest.xml" \
@@ -470,6 +480,8 @@ fails_with "a project type nothing here has ever built" "DynamicLibrary" \
 	"$read_vcxproj" "$refused/dynamic-library.vcxproj"
 fails_with "C++/CX, which is a different language" "C++/CX" \
 	"$read_vcxproj" "$refused/compile-as-winrt.vcxproj"
+fails_with "a linker asked to write the winmd" "gen-projection.sh" \
+	"$read_vcxproj" "$refused/generate-winmd.vcxproj"
 fails_with "a project that is not there" "no such project" \
 	"$read_vcxproj" "$refused/absent.vcxproj"
 # The OS activates what the manifest names. A package whose executable is called

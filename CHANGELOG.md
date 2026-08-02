@@ -11,6 +11,13 @@ a specific version, and knowing which is the whole point of writing it down.
 
 ### Added
 
+- **Four settings the default Visual Studio template emits are now understood**
+  instead of refused: `RuntimeTypeInfo` (`/GR`, `/GR-`), the Release linker's
+  `OptimizeReferences`/`EnableCOMDATFolding` pair (`/opt:ref`, `/opt:icf` —
+  lld-link implements both), and `GenerateWindowsMetadata`, where `false` is
+  accepted as the truth it already is (the winmd comes from
+  `gen-projection.sh`) and `true` is refused by name. The manual corpus of
+  real projects remains the driver for further rows.
 - **`build-app.sh` takes `--platform x64|ARM64`**, like `build-project.sh`
   already did. The platform table — which values can be built, what
   `UWP_TARGET`/`UWP_ARCH_DIR` each means — moves to `common.sh` so the two
