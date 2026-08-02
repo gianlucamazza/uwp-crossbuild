@@ -7,6 +7,21 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
+## 0.3.1 — 2026-08-02
+
+0.3.0 never reached the AUR: its own tests stopped `makepkg check()` in the
+publish chroot. The tag stands, the package starts here.
+
+### Fixed
+
+- **Usage errors no longer depend on what is installed.** `build.sh` checked
+  for clang-cl before noticing that `--static-lib` and `--uwp` contradict each
+  other; `restore-nuget.sh` demanded curl and 7z before reading a single
+  argument. Found by the first machine that had neither: the AUR chroot, where
+  `makepkg` runs the tests. Argument validation now comes first — the
+  convention already said so — and the suite passes with clang-cl, llvm-lib
+  and 7z all absent from `PATH`.
+
 ## 0.3.0 — 2026-08-02
 
 The three gaps 0.2.0 left tracked, closed: the `.vcxproj` path is exercised in

@@ -5,7 +5,7 @@
 # cache — see the README. That is why there is no `source` beyond this
 # repository and no huge `package()`.
 pkgname=uwp-crossbuild
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc="Compile C++/WinRT UWP applications for Windows, from Linux"
 arch=('any')
