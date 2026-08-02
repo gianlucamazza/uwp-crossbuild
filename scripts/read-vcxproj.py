@@ -741,6 +741,22 @@ class Description:
             elif name == "Optimization":
                 flags.append(self._lookup(OPTIMIZATION, name, value))
             elif name == "RuntimeLibrary":
+                # In an app container the DLL runtimes are overridden to their
+                # static counterparts, not honoured. MSBuild's UWP toolset
+                # satisfies /MD with the store CRT (VCRUNTIME140_APP.dll and
+                # friends, from the VCLibs framework); xwin carries no store
+                # import libraries — modern MSVC no longer ships them — so /MD
+                # here would import the desktop VCRUNTIME140.dll, which does
+                # not resolve inside the container. Observed end to end: the
+                # package installs and activation fails with 0x80270300
+                # (Xbox Series S, OS 26100.8866). Statically linked, the same
+                # application launches.
+                container = (
+                    self.evaluator.properties.get("AppContainerApplication", "")
+                    == "true"
+                )
+                if container and value.endswith("DLL"):
+                    value = value[: -len("DLL")]
                 flags.append(self._lookup(RUNTIME_LIBRARY, name, value))
             elif name == "ExceptionHandling":
                 flags.append(self._lookup(EXCEPTION_HANDLING, name, value))
