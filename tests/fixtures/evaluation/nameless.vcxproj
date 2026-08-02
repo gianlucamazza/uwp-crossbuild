@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A project whose .idl declares no namespace. The winmd is named after the
+  namespace — the manifest's EntryPoint is resolved against <namespace>.winmd —
+  so build-project.sh has nothing to call it and must say so, before any SDK
+  tool runs.
+-->
+<Project DefaultTargets="Build" ToolsVersion="15.0"
+         xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ConfigurationType>Application</ConfigurationType>
+    <TargetName>evaluation</TargetName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp" />
+    <Midl Include="no-namespace.idl" />
+    <AppxManifest Include="AppxManifest.xml" />
+  </ItemGroup>
+</Project>

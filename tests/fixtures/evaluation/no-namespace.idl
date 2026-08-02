@@ -1,0 +1,6 @@
+// An .idl with declarations but no namespace: nothing here says what the
+// winmd should be called.
+[attributeusage(target_runtimeclass)]
+attribute PlaceholderAttribute
+{
+}

@@ -6,7 +6,11 @@
 #                    [--property NAME=VALUE] [--no-pri] [--no-restore]
 #
 #     --config     which configuration's settings to take (default: Release)
-#     --platform   which platform's (default: x64; nothing else has been tried)
+#     --platform   which platform's (x64, the default, or ARM64). This also
+#                  selects the compiler target and library directories: the
+#                  platform decides both which MSBuild conditions hold and what
+#                  the objects are, and answering only the first would build
+#                  x64 code under ARM64 settings without a word.
 #     --property   MSBuild's /p:, repeatable. A project's own switches live
 #                  here — a backend selector, a SKU flag — and one of them can
 #                  decide whether a ProjectReference exists at all.
@@ -67,6 +71,15 @@ done
   For a project directory in the shape of examples/hello-uwp, use build-app.sh."
 project="$(cd "$(dirname "$project")" && pwd)/$(basename "$project")"
 
+# The platform names both halves of the build: the conditions the evaluator
+# takes and the target build.sh compiles for. An explicit UWP_TARGET/
+# UWP_ARCH_DIR in the environment still wins, as everywhere else.
+case "$platform" in
+x64) export UWP_TARGET="${UWP_TARGET:-x86_64-pc-windows-msvc}" UWP_ARCH_DIR="${UWP_ARCH_DIR:-x86_64}" ;;
+ARM64) export UWP_TARGET="${UWP_TARGET:-aarch64-pc-windows-msvc}" UWP_ARCH_DIR="${UWP_ARCH_DIR:-aarch64}" ;;
+*) die "--platform $platform is not one this can build: x64 or ARM64" ;;
+esac
+
 read_vcxproj=("$here/read-vcxproj.py" --config "$config" --platform "$platform"
 	${properties[@]+"${properties[@]}"})
 
@@ -76,6 +89,18 @@ read_vcxproj=("$here/read-vcxproj.py" --config "$config" --platform "$platform"
 # a project with no sources rather than as a stopped build.
 field() { # field <project> <dotted path>
 	"${read_vcxproj[@]}" "$1" --field "$2"
+}
+
+# The winmd is named after the namespace the .idl declares, never after the
+# .idl file: the manifest's EntryPoint is "<namespace>.App" and the loader
+# resolves it against <namespace>.winmd. An app.idl declaring `namespace hello`
+# must ship hello.winmd — named after the file, the package installs and then
+# fails to launch.
+idl_namespace() { # idl_namespace <idl path>
+	local name
+	name="$(sed -n 's/^[[:space:]]*namespace[[:space:]]\{1,\}\([A-Za-z0-9_.]\{1,\}\).*/\1/p' "$1" | head -1)"
+	[[ -n "$name" ]] || die "$1 declares no namespace, so the winmd has no name"
+	echo "$name"
 }
 
 # The same, into an array named by the caller, with an empty result meaning an
@@ -201,12 +226,13 @@ build_project() { # build_project <project> <output path> <static|application>
 		# The projection comes from the project's own .idl: the sources that
 		# implement the application class do not compile without the generated
 		# headers, and the winmd has to ship inside the package.
-		local idl
+		local idl namespace
 		idl="$(field "$vcxproj" idl)" || die "cannot read idl from $vcxproj"
 		if [[ -n "$idl" ]]; then
-			step "Metadata and projection ($(basename "${idl%.idl}").winmd)"
+			namespace="$(idl_namespace "$directory/$idl")"
+			step "Metadata and projection ($namespace.winmd)"
 			"$here/gen-projection.sh" --idl "$directory/$idl" \
-				--name "$(basename "${idl%.idl}")" --out "$build/gen" >/dev/null
+				--name "$namespace" --out "$build/gen" >/dev/null
 			arguments+=(-I "$build/gen")
 		fi
 		read_field listed "$vcxproj" link.libpath
@@ -247,7 +273,7 @@ cp "$directory/$manifest" "$out/AppxManifest.xml"
 # it ships inside the package.
 idl="$(field "$project" idl)"
 if [[ -n "$idl" ]]; then
-	cp "$build/gen/$(basename "${idl%.idl}").winmd" "$out/"
+	cp "$build/gen/$(idl_namespace "$directory/$idl").winmd" "$out/"
 fi
 
 # Everything the project marks for deployment, at the name it has to have inside
