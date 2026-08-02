@@ -444,6 +444,13 @@ fails_with "a project that is not there" "no such project" \
 # something else installs, then fails to launch, and reads as an application bug.
 fails_with "a manifest that starts another executable" "would install and fail to launch" \
 	"$read_vcxproj" "$refused/mismatched-executable.vcxproj"
+# The manifest is copied into the layout verbatim, so an ARM64 build of an x64
+# manifest would ship its executable under an identity claiming the wrong
+# architecture. Same manifest, matching platform: no refusal.
+fails_with "a manifest whose architecture is not the platform's" "ProcessorArchitecture" \
+	"$read_vcxproj" "$refused/mismatched-architecture.vcxproj" --platform ARM64
+succeeds_with "the same manifest under the platform it names" "fixture.exe" \
+	"$read_vcxproj" "$refused/mismatched-architecture.vcxproj" --field executable
 
 echo "build-project.sh guards"
 fails_with "--project and --out are required" "--project and --out are required" \

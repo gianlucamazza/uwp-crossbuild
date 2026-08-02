@@ -9,6 +9,16 @@ a specific version, and knowing which is the whole point of writing it down.
 
 ## Unreleased
 
+### Added
+
+- **A manifest whose `ProcessorArchitecture` is not the platform's is refused.**
+  The manifest is copied into the layout verbatim, so a `--platform ARM64`
+  build of an x64 manifest would ship its ARM64 executable under an identity
+  still claiming x64, and nothing would say so until a device was asked to
+  install it. Same shape as the executable cross-check: refuse and name the
+  one-attribute fix, never rewrite the project's manifest. `neutral` and an
+  absent attribute stay legal.
+
 ### Changed
 
 - **The default SDK version is pinned once, in `common.sh`.** It was three

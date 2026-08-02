@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The manifest claims x64. Built for ARM64, the layout would carry an ARM64
+     executable under an identity still claiming x64 — the manifest is copied
+     verbatim, so nothing reports the mismatch until a device is asked to
+     install it. -->
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ConfigurationType>Application</ConfigurationType>
+    <TargetName>fixture</TargetName>
+  </PropertyGroup>
+  <ItemGroup>
+    <AppxManifest Include="mismatched-architecture.AppxManifest.xml" />
+  </ItemGroup>
+</Project>
