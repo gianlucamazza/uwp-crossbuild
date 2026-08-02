@@ -2,7 +2,12 @@
 
 Notable changes per release. Dates are the day the work landed.
 
-## Unreleased
+Version numbers here track **what the toolchain can do**, not the pinned
+versions of LLVM, Wine or the Windows SDK. When one of those breaks a
+workaround, that is a fix and it gets its own entry — the workaround exists for
+a specific version, and knowing which is the whole point of writing it down.
+
+## 0.4.0 — 2026-08-02
 
 The day the toolchain's output was first observed _running_: hello-uwp, built
 by `build-project.sh` and deployed by `run-on-device.sh`, launched on an Xbox
@@ -54,7 +59,6 @@ double underscore, a missing `package` parameter), a missing
     expanded the way bash before 4.4 accepts, and the README gained an
     Environment table for every `UWP_*` override.
 
-
 - **`examples/hello-uwp` initialises the MTA before `Application::Start`.**
   XAML requires the first access to the Application object to come from the
   multi-threaded apartment; without it the factory call throws
@@ -62,11 +66,10 @@ double underscore, a missing `package` parameter), a missing
   reported by the activation manager only as 0x8027025B. The example's old
   comment claimed Start wanted no apartment at all — plausible, documented,
   and wrong; four symbolised crash dumps say otherwise (gotcha 17).
-
-Version numbers here track **what the toolchain can do**, not the pinned
-versions of LLVM, Wine or the Windows SDK. When one of those breaks a
-workaround, that is a fix and it gets its own entry — the workaround exists for
-a specific version, and knowing which is the whole point of writing it down.
+- **`run-on-device.sh` refuses openappx before 0.6.3** — the first release
+  whose deploy builds the launch request right. Older ones fail every start as
+  an opaque 0x8D160120; the script now says why and names the version, instead
+  of letting the console take the blame again.
 
 ## 0.3.1 — 2026-08-02
 
