@@ -121,7 +121,7 @@ Nothing from Microsoft is redistributed: both `fetch-sdk.sh` and `xwin` download
 from Microsoft's CDN at run time under the SDK licence. CI must re-run them
 rather than cache the result in an artefact store.
 
-## Fourteen things that will waste your afternoon
+## Sixteen things that will waste your afternoon
 
 Every one of these fails while pointing somewhere else. The scripts handle them;
 this is the record of why they exist.
@@ -204,6 +204,25 @@ switch`. `gen-projection.sh` runs it from the destination directory instead.
     a `--` inside an XML comment gets `PRI191: Appx manifest not found or is
 invalid`, which is true — that is not legal XML — but says nothing about
     comments.
+
+15. **GDI collides with every shape XAML draws.** `wingdi.h` declares
+    `Polyline`, `Rectangle`, `Ellipse`, `Polygon` and `Path`; XAML has a class
+    for each. A page that says `Polyline{}` after `using namespace
+…Xaml::Shapes` stops on "reference to 'Polyline' is ambiguous", pointing at
+    the application, which compiles in Visual Studio. It does because those
+    declarations are simply absent there: `wingdi.h` puts them behind
+    `WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)`, and a UWP project
+    compiles as the app family — which n°7 explains why we cannot. `--uwp`
+    passes `/DNOGDI` instead: the app container has no GDI, so the only thing
+    those declarations can do here is collide.
+
+16. **`msiexec /a` takes a Windows path for the package, not just for
+    TARGETDIR.** An administrative install copies the package into TARGETDIR by
+    appending the path it was given, so a Unix path sends it to
+    `TARGETDIR\home\you\…`, which does not exist. It fails on its first file
+    with `ERROR_PATH_NOT_FOUND`, then rolls back and deletes TARGETDIR — so the
+    next attempt starts by finding nothing and reads as a broken Wine prefix.
+    `WINEDEBUG=+msi,+file` is what shows the path it tried.
 
 ## Layout
 

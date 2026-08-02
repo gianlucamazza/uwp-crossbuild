@@ -136,6 +136,18 @@ libs=(
 
 if [[ $uwp -eq 1 ]]; then
 	extra+=(/D__WRL_NO_DEFAULT_LIB__)
+	# NOGDI, because the app container has no GDI and the names collide with the
+	# ones an application actually draws with. wingdi.h declares Polyline,
+	# Rectangle, Ellipse, Polygon and Path; XAML has a shape class for each, and
+	# a page that says `Polyline{}` after `using namespace …Xaml::Shapes` stops
+	# on "reference to 'Polyline' is ambiguous", pointing at the application.
+	#
+	# In Visual Studio those declarations are simply absent: wingdi.h wraps them
+	# in WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP), and a UWP project
+	# compiles with WINAPI_FAMILY=WINAPI_FAMILY_APP. This is the one piece of
+	# that partition worth reproducing, and windows.h's own switch does it —
+	# see the paragraph below for why the family itself is not set.
+	extra+=(/DNOGDI)
 	# Without /appcontainer the image lacks IMAGE_DLLCHARACTERISTICS_APPCONTAINER
 	# (0x1000) and the package is refused. Verify with:
 	#   objdump -p app.exe | grep DllCharacteristics

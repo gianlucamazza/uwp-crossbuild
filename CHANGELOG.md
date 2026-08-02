@@ -80,6 +80,23 @@ time: the `.vcxproj` is read, not reconstructed.
   directory it was run from — the project being built, usually, or the checkout
   in CI. `--cache-dir` now points it at the same cache as everything else, and
   `.gitignore` covers the case where someone runs it without.
+- **`--uwp` passes `/DNOGDI`.** `wingdi.h` declares `Polyline`, `Rectangle`,
+  `Ellipse`, `Polygon` and `Path`; XAML has a class for each, and a page that
+  draws shapes stopped on "reference to 'Polyline' is ambiguous", pointing at
+  code that compiles in Visual Studio. It compiles there because those
+  declarations are absent: `wingdi.h` puts them behind the desktop partition,
+  which a UWP project excludes by compiling as the app family — the thing n°7
+  explains why this cannot do. The app container has no GDI, so the only thing
+  they can do here is collide.
+- **`fetch-sdk.sh` handed msiexec a Unix path for the package**, while
+  converting `TARGETDIR` properly — the one place here that gave a Windows tool
+  anything but a Windows path. An administrative install copies the package into
+  `TARGETDIR` by appending the path it was given, so it tried to create
+  `TARGETDIR\layout/Installers/…`, failed on its first file with
+  `ERROR_PATH_NOT_FOUND`, and rolled back — deleting `TARGETDIR`, so the next
+  run began by finding nothing and looked like a fresh environment problem. The
+  log kept by the entry above is what made it findable at all; `WINEDEBUG=+msi`
+  named the path. Observed with Wine 11.14 and SDK 10.0.22621.
 
 ## 0.1.1 — 2026-08-01
 
