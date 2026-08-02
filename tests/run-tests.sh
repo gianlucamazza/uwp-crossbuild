@@ -506,6 +506,35 @@ fails_with "an unconfigured device names every variable it needs" "OPENAPPX_DEVI
 	env -u UWP_DEVICE_URL -u UWP_DEVICE_USER -u OPENAPPX_DEVICE_PASSWORD \
 	UWP_DEVICE_ENV=/nonexistent \
 	"$scripts/run-on-device.sh" --package "$here/run-tests.sh"
+# openappx before 0.6.3 builds the launch request wrong (double-underscore
+# AUMID, no package parameter) and every start fails as 0x8D160120; those
+# releases also predate --version, so "unknown command" means "too old". The
+# stubs stand in for each generation; the device is never reached.
+stub="$(mktemp -d)"
+device=(UWP_DEVICE_URL=https://device UWP_DEVICE_USER=u OPENAPPX_DEVICE_PASSWORD=p)
+cat >"$stub/openappx" <<'EOF'
+#!/bin/sh
+echo "unknown command: $1" >&2; exit 2
+EOF
+chmod +x "$stub/openappx"
+fails_with "an openappx that predates --version is refused" "predates 0.6.3" \
+	env "${device[@]}" PATH="$stub:$PATH" "$scripts/run-on-device.sh" --package "$here/run-tests.sh"
+cat >"$stub/openappx" <<'EOF'
+#!/bin/sh
+echo "openappx 0.6.2"
+EOF
+fails_with "openappx 0.6.2 is refused, naming the failure it causes" "0x8D160120" \
+	env "${device[@]}" PATH="$stub:$PATH" "$scripts/run-on-device.sh" --package "$here/run-tests.sh"
+cat >"$stub/openappx" <<'EOF'
+#!/bin/sh
+case "$1" in
+--version) echo "openappx 0.6.3" ;;
+*) echo "stub: past the version gate" >&2; exit 3 ;;
+esac
+EOF
+fails_with "0.6.3 itself passes the gate" "past the version gate" \
+	env "${device[@]}" PATH="$stub:$PATH" "$scripts/run-on-device.sh" --package "$here/run-tests.sh"
+rm -rf "$stub"
 
 echo "restore-nuget.sh"
 # Nothing here goes to the network: what is under test is the reading of the

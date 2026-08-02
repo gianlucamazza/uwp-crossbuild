@@ -70,6 +70,9 @@ scripts/run-on-device.sh --layout /tmp/hello-layout
 with `~/.config/uwp-crossbuild/dev.pfx`, whose subject must equal the
 manifest's `Publisher` and whose `.cer` the console must trust once
 (`openappx deploy … --install-cert`). Neither file belongs in a repository.
+It requires openappx **0.6.3 or newer** (`pipx install 'openappx>=0.6.3'`):
+earlier releases build the launch request wrong and every start fails as an
+opaque `0x8D160120`, so the script refuses them up front.
 
 ## What works
 

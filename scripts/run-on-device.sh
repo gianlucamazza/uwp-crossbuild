@@ -68,7 +68,17 @@ fi
   OPENAPPX_DEVICE_PASSWORD, or write them in $CONFIG
   (values are in Dev Home -> Remote Access on the console)"
 
-command -v openappx >/dev/null || die "openappx not found — pipx install openappx"
+command -v openappx >/dev/null || die "openappx not found — pipx install 'openappx>=0.6.3'"
+
+# 0.6.3 is the first release whose deploy can launch anything: older ones build
+# the AUMID with a double underscore and omit the package parameter, and every
+# launch fails as an opaque 0x8D160120 blamed on the console. Those versions
+# also lack --version, so "unknown command" means "too old" here.
+minimum=0.6.3
+version="$(openappx --version 2>/dev/null | awk '{print $2}')" || true
+[[ -n "$version" && "$(printf '%s\n' "$minimum" "$version" | sort -V | head -1)" == "$minimum" ]] ||
+	die "openappx ${version:-(no --version: predates 0.6.3)} is too old: launches fail
+  with 0x8D160120 before $minimum — pipx install --force 'openappx>=$minimum'"
 
 # --insecure is not optional: the Device Portal's certificate is issued by the
 # console to itself, so verification against a CA store can never succeed.
