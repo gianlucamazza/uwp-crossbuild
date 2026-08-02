@@ -38,6 +38,9 @@ C_STD="${UWP_C_STD:-c17}"
 # back at the real directory rather than at ~/.local/bin.
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
+
 out=""
 pch=""
 jobs="$(nproc 2>/dev/null || echo 4)"
@@ -47,22 +50,6 @@ sources=()
 extra=()
 link_args=()
 include_dirs=()
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
-# A flag whose value is missing would otherwise fail on an unbound $2 under
-# `set -u`, naming the shell rather than the argument.
-value() { # value <flag> <argc>
-	[[ $2 -ge 2 ]] || die "$1 needs a value"
-}
-# The comment block at the top of this file is the usage text. Printing it back
-# means there is one description of the flags, not two that drift apart.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in

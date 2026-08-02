@@ -9,6 +9,13 @@
 # failure each one avoids.
 set -euo pipefail
 
+# Resolve through symlinks: an installed command is a symlink in bin/, and the
+# scripts find their siblings, common.sh and include/msvc-compat.h relative to
+# themselves — which has to be the real directory, not ~/.local/bin.
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
+
 SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
 SDK_VERSION="${UWP_SDK_VERSION:-10.0.22621.0}"
 
@@ -18,19 +25,6 @@ BIN_X86="$KITS/bin/$SDK_VERSION/x86"
 INCLUDE="$KITS/Include/$SDK_VERSION"
 REFERENCES="$KITS/References/$SDK_VERSION"
 UNION="$KITS/UnionMetadata/$SDK_VERSION"
-
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
-
-# The comment block at the top of this file is the usage text. Printing it back
-# means there is one description of the tools, not two that drift apart.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
 
 tool="${1:-}"
 shift || true

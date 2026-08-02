@@ -89,6 +89,9 @@ jobs:
         # for anyone following the README.
         run: |
           for f in scripts/*.sh scripts/*.py tests/*.sh packaging/*.sh; do
+            # common.sh is sourced by the others and never run. Executable, it
+            # would look like a command and get a symlink it has no use for.
+            [ "$f" = scripts/common.sh ] && continue
             [ -x "$f" ] || { echo "not executable: $f"; exit 1; }
           done
 

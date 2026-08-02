@@ -31,6 +31,9 @@ set -euo pipefail
 # back at the real directory rather than at ~/.local/bin.
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
+
 project=""
 out=""
 config="Release"
@@ -38,23 +41,6 @@ platform="x64"
 properties=()
 no_pri=0
 no_restore=0
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
-step() { printf '\n==> %s\n' "$*"; }
-# A flag whose value is missing would otherwise fail on an unbound $2 under
-# `set -u`, naming the shell rather than the argument.
-value() { # value <flag> <argc>
-	[[ $2 -ge 2 ]] || die "$1 needs a value"
-}
-# The comment block at the top of this file is the usage text. Printing it back
-# means there is one description of the flags, not two that drift apart.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -110,14 +96,16 @@ out="$(cd "$out" && pwd)"
 	die "--out must be outside the project directory: the layout is a build
   product, and everything in it ships inside the package."
 
-# A layout is the complete contents of a package, so anything left from an
-# earlier build ships with it. Clear it, but only once it is recognisably a
-# layout: --out pointed somewhere unexpected should not lose that directory.
-if [[ -n "$(ls -A "$out")" ]]; then
-	[[ -f "$out/AppxManifest.xml" ]] ||
-		die "$out is not empty and holds no AppxManifest.xml — refusing to clear it"
-	find "$out" -mindepth 1 -delete
-fi
+type="$(field "$project" type)"
+[[ "$type" == "Application" ]] ||
+	die "$project is a $type. Only an Application produces a package layout;
+  a StaticLibrary is built as a reference of one."
+# The name the manifest starts, which read-vcxproj.py has already checked
+# against the one the project builds — a package whose executable is named
+# something else installs and then fails to launch.
+executable="$(field "$project" executable)"
+
+prepare_layout "$out" "$executable"
 
 build="${UWP_OBJ_DIR:-$out.build}"
 mkdir -p "$build"
@@ -246,15 +234,6 @@ build_project() { # build_project <project> <output path> <static|application>
 }
 
 # --------------------------------------------------------------------------
-
-type="$(field "$project" type)"
-[[ "$type" == "Application" ]] ||
-	die "$project is a $type. Only an Application produces a package layout;
-  a StaticLibrary is built as a reference of one."
-# The name the manifest starts, which read-vcxproj.py has already checked
-# against the one the project builds — a package whose executable is named
-# something else installs and then fails to launch.
-executable="$(field "$project" executable)"
 
 build_project "$project" "$out/$executable" application
 

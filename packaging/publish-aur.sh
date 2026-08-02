@@ -14,29 +14,18 @@ set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# publish-aur.sh lives in packaging/ and is never installed — it is a
+# maintainer command run from a checkout, so the library is a sibling
+# directory away rather than beside it.
+# shellcheck source=scripts/common.sh
+. "$here/../scripts/common.sh"
+
 PKGNAME="${AUR_PKGNAME:-uwp-crossbuild}"
 AUR_HOST="${AUR_HOST:-aur@aur.archlinux.org}"
 
 version=""
 dry_run=0
 push=1
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
-step() { printf '\n==> %s\n' "$*"; }
-# A flag whose value is missing would otherwise fail on an unbound $2 under
-# `set -u`, naming the shell rather than the argument.
-value() { # value <flag> <argc>
-	[[ $2 -ge 2 ]] || die "$1 needs a value"
-}
-# The comment block at the top of this file is the usage text. Printing it back
-# means there is one description of the flags, not two that drift apart.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in

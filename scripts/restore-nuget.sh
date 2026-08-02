@@ -26,26 +26,12 @@ FEED="${UWP_NUGET_FEED:-https://www.nuget.org/api/v2/package}"
 
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
+
 project=""
 config=""
 packages=""
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
-step() { printf '\n==> %s\n' "$*"; }
-# A flag whose value is missing would otherwise fail on an unbound $2 under
-# `set -u`, naming the shell rather than the argument.
-value() { # value <flag> <argc>
-	[[ $2 -ge 2 ]] || die "$1 needs a value"
-}
-# The comment block at the top of this file is the usage text. Printing it back
-# means there is one description of the flags, not two that drift apart.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -102,15 +88,6 @@ list=()
 [[ ${#list[@]} -gt 0 ]] || {
 	echo "no packages declared — nothing to restore"
 	exit 0
-}
-
-# Downloads to a temporary name and renames on success. curl without --fail
-# writes the server's error page into the output file and exits 0, so a package
-# id or version that does not exist would otherwise be cached as a "package"
-# that fails later inside 7z, blaming 7z.
-fetch() { # fetch <url> <destination>
-	curl -sSL --fail -o "$2.part" "$1" || die "download failed: $1"
-	mv "$2.part" "$2"
 }
 
 mkdir -p "$packages"

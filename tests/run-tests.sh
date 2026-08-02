@@ -179,9 +179,14 @@ echo "--help"
 # Installed as uwp-build and friends, where the header comment nobody can see is
 # the only documentation. Each script prints its own, and exits 0 doing it.
 for script in "$scripts"/*.sh "$packaging"/publish-aur.sh; do
+	# common.sh is sourced by the others and never run: it is a library, and
+	# has no usage of its own to print.
+	[[ "$(basename "$script")" != common.sh ]] || continue
 	succeeds_with "$(basename "$script") --help prints its usage" \
 		"$(basename "$script") —" "$script" --help
 done
+assert "common.sh is a library, not a command" "it is executable, so it looks like one" \
+	test ! -x "$scripts/common.sh"
 fails_with "check-deps.sh rejects arguments rather than ignoring them" \
 	"takes no arguments" "$scripts/check-deps.sh" --canonical
 

@@ -18,6 +18,9 @@ set -euo pipefail
 # include/msvc-compat.h relative to themselves, so a symlink on PATH must point
 # back at the real directory rather than at ~/.local/bin.
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
 SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
 SDK_VERSION="${UWP_SDK_VERSION:-10.0.22621.0}"
 UNION="$SDK_ROOT/Windows Kits/10/UnionMetadata/$SDK_VERSION"
@@ -26,22 +29,6 @@ idl=""
 name=""
 out=""
 stubs=""
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
-# A flag whose value is missing would otherwise fail on an unbound $2 under
-# `set -u`, naming the shell rather than the argument.
-value() { # value <flag> <argc>
-	[[ $2 -ge 2 ]] || die "$1 needs a value"
-}
-# The comment block at the top of this file is the usage text. Printing it back
-# means there is one description of the flags, not two that drift apart.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in

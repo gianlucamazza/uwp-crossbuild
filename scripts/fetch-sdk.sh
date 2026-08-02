@@ -9,6 +9,13 @@
 # time, under its own licence. Do not commit the result.
 set -euo pipefail
 
+# Resolve through symlinks: an installed command is a symlink in bin/, and the
+# scripts find their siblings, common.sh and include/msvc-compat.h relative to
+# themselves — which has to be the real directory, not ~/.local/bin.
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
+
 SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
 WORK="${UWP_SDK_WORK:-$HOME/.cache/uwp-crossbuild/work}"
 SDK_VERSION="${UWP_SDK_VERSION:-10.0.22621.0}"
@@ -30,17 +37,6 @@ MSIS=(
 	"Windows SDK Facade Windows WinMD Versioned-x86_en-us.msi"   # UnionMetadata/Windows.winmd
 )
 
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
-step() { printf '\n==> %s\n' "$*"; }
-# The comment block at the top of this file is the usage text.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
 [[ $# -eq 0 ]] || die "fetch-sdk.sh takes no arguments; see UWP_* in --help"
 
@@ -49,13 +45,6 @@ usage() {
 # error page into the output file and exits 0, so an HTTP 404 leaves a
 # 200-byte "installer"; and an interrupted download leaves a truncated one that
 # every later run happily reuses.
-fetch() { # fetch <url> <destination>
-	[[ -f "$2" ]] && return 0
-	curl -sSL --fail -o "$2.part" "$1" ||
-		die "download failed: $1"
-	mv "$2.part" "$2"
-}
-
 command -v wine >/dev/null || die "wine is required"
 command -v 7z >/dev/null || die "7z (p7zip) is required"
 command -v curl >/dev/null || die "curl is required"
@@ -67,7 +56,9 @@ command -v curl >/dev/null || die "curl is required"
 mkdir -p "$WORK" "$SDK_ROOT"
 
 step "Downloading the SDK web installer"
-fetch "$SDK_INSTALLER_URL" "$WORK/sdksetup.exe"
+# 1.1 GB behind it, so it is fetched once and kept.
+[[ -f "$WORK/sdksetup.exe" ]] ||
+	fetch "$SDK_INSTALLER_URL" "$WORK/sdksetup.exe"
 
 step "Fetching the SDK layout (~1.1 GB, cached in $WORK/layout)"
 if [[ ! -d "$WORK/layout/Installers" ]]; then

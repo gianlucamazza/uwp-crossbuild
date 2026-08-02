@@ -14,17 +14,13 @@
 #     --help       this text
 set -euo pipefail
 
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
-# The comment block at the top of this file is the usage text. Printing it back
-# means there is one description of the modes, not two that drift apart.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
+# Resolve through symlinks: an installed command is a symlink in bin/, and the
+# scripts find their siblings, common.sh and include/msvc-compat.h relative to
+# themselves — which has to be the real directory, not ~/.local/bin.
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
+
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
 
 # ${1:?…} would report this as a shell error naming a line number. Everything

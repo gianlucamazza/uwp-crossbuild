@@ -21,6 +21,10 @@ SCRIPTS := build.sh build-app.sh build-project.sh check-deps.sh fetch-sdk.sh \
 # does not belong in a heredoc. It is installed and exposed like the rest.
 SCRIPTS += read-vcxproj.py
 
+# Sourced by those, never run: installed beside them, given no symlink, and not
+# executable, so that nothing mistakes it for a command.
+LIBS := common.sh
+
 # Exposed on PATH under a uwp- prefix: `build.sh` alone in ~/.local/bin would be
 # an unusually good way to collide with something.
 LINKS := $(patsubst %.py,uwp-%,$(patsubst %.sh,uwp-%,$(SCRIPTS)))
@@ -34,6 +38,7 @@ install:
 	install -d $(DESTDIR)$(LIBDIR)/scripts $(DESTDIR)$(LIBDIR)/include \
 	           $(DESTDIR)$(BINDIR) $(DESTDIR)$(DOCDIR)
 	install -m 0755 $(addprefix scripts/,$(SCRIPTS)) $(DESTDIR)$(LIBDIR)/scripts/
+	install -m 0644 $(addprefix scripts/,$(LIBS)) $(DESTDIR)$(LIBDIR)/scripts/
 	install -m 0644 include/msvc-compat.h $(DESTDIR)$(LIBDIR)/include/
 	install -m 0644 README.md CHANGELOG.md LICENSE $(DESTDIR)$(DOCDIR)/
 	install -m 0644 docs/*.md $(DESTDIR)$(DOCDIR)/

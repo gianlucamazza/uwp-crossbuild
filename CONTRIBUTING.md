@@ -29,7 +29,7 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
 ## What this repository is
 
-A record of fourteen ways the Windows SDK fails on Linux, with a script wrapped
+A record of sixteen ways the Windows SDK fails on Linux, with a script wrapped
 around each. That framing decides most questions:
 
 - **Every workaround says which failure it avoids.** A flag whose purpose is not
@@ -76,6 +76,18 @@ the CHANGELOG rather than into a test that cannot run.
 - Scripts are bash with `set -euo pipefail`, formatted by `shfmt`. One is
   Python, because 500 lines of MSBuild evaluator do not belong in a heredoc; it
   uses the standard library only, like everything else here.
+- **`scripts/common.sh` holds what must not be written twice**, and nothing
+  else: the shape of an error, a download that can fail, and the layout
+  doctrine. It is sourced, never run — no symlink, not executable. The test for
+  whether something belongs there is not "it appears twice" but "two copies
+  could disagree and one of them would be wrong": `build-app.sh` and
+  `build-project.sh` each had a copy of "clear a stale layout only when it is
+  recognisably one" and disagreed within a day about what counts as
+  recognisable. Anything whose reasons live in one script stays in that script.
+- **`read-vcxproj.py` is one file on purpose**: an evaluator, a description in
+  this toolchain's terms, and a command line. One entry point, one installed
+  symlink. If a fourth responsibility turns up, that is when it becomes a
+  package.
 - **`read-vcxproj.py` refuses rather than guesses.** Its table of MSBuild
   settings to clang-cl flags is a contract: a setting that is not in it is not
   quietly dropped, because a build that silently differs from MSBuild's is worse

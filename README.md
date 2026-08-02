@@ -238,6 +238,7 @@ scripts/build-app.sh         all of the above: a project directory -> a layout
 scripts/read-vcxproj.py      a Visual Studio project -> what it builds, as JSON
 scripts/restore-nuget.sh     packages.config -> packages/, from nuget.org
 scripts/build-project.sh     a .vcxproj -> a layout, references and DLLs included
+scripts/common.sh            sourced by all of them: errors, downloads, layout rules
 include/msvc-compat.h        force-included: what clang needs that MSVC assumes
 Makefile                     install / uninstall / check
 packaging/PKGBUILD           Arch package
@@ -300,7 +301,17 @@ from any of those downloads belongs in a commit.
   what is missing: a compiler setting with no entry in the mapping table, a
   property only Visual Studio supplies, a target that generates sources. Each is
   a table row and a fixture, not an investigation.
+- **An example in `.vcxproj` shape**, so that CI can build one
+  ([#4](https://github.com/gianlucamazza/uwp-crossbuild/issues/4)). Today
+  `build-project.sh` is covered by fixtures for what it reads and by a corpus of
+  real projects for what it builds — and that corpus lives outside this
+  repository, so no workflow can run it.
 - **A device that can actually launch a sideloaded app.** This one cannot — not
   even Microsoft Edge — so nothing built here has been seen to run. That needs
   different hardware, not a different package.
-- **ARM64**, if a target ever needs it.
+- **ARM64**, if a target ever needs it
+  ([#5](https://github.com/gianlucamazza/uwp-crossbuild/issues/5)) — the
+  variables are there and no build has ever used them.
+- **`resources.pri` beyond "not empty"**
+  ([#6](https://github.com/gianlucamazza/uwp-crossbuild/issues/6)), which needs
+  something that consumes the result.

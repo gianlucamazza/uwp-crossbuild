@@ -26,28 +26,14 @@ set -euo pipefail
 # back at the real directory rather than at ~/.local/bin.
 here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
+
 project=""
 out=""
 name=""
 no_pri=0
 copy_dirs=()
-die() {
-	echo "error: $*" >&2
-	exit 1
-}
-step() { printf '\n==> %s\n' "$*"; }
-# A flag whose value is missing would otherwise fail on an unbound $2 under
-# `set -u`, naming the shell rather than the argument.
-value() { # value <flag> <argc>
-	[[ $2 -ge 2 ]] || die "$1 needs a value"
-}
-# The comment block at the top of this file is the usage text. Printing it back
-# means there is one description of the flags, not two that drift apart.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -80,19 +66,7 @@ out="$(cd "$out" && pwd)"
 [[ "$out" != "$project" && "$out" != "$project"/* ]] ||
 	die "--out must be outside --project: the layout is a build product, not a source"
 
-# A layout is the complete contents of a package, so anything left over from an
-# earlier build ships with it — a renamed executable, a winmd from a project
-# that used to be called something else. Clear it, but only once it is
-# recognisably a layout of ours: --out pointed somewhere unexpected should not
-# delete that directory's contents.
-# $name.exe counts as well as the manifest: a build that died between the link
-# and the copy leaves a layout holding only the executable, and the next run
-# should not need a manual rm.
-if [[ -n "$(ls -A "$out")" ]]; then
-	[[ -f "$out/AppxManifest.xml" || -f "$out/$name.exe" ]] ||
-		die "$out is not empty and holds no AppxManifest.xml — refusing to clear it"
-	find "$out" -mindepth 1 -delete
-fi
+prepare_layout "$out" "$name.exe"
 
 # Everything generated — the projection, the objects, the ~190 MB precompiled
 # header — goes in a build directory *beside* the layout, never inside it.

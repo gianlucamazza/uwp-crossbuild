@@ -7,12 +7,13 @@
 # so it can gate a build script as well as inform a person.
 set -uo pipefail
 
-# The comment block at the top of this file is the usage text.
-usage() {
-	awk 'NR>1 && /^#/ {sub(/^# ?/, ""); print; next} NR>1 {exit}' \
-		"$(readlink -f "${BASH_SOURCE[0]}")"
-	exit 0
-}
+# Resolve through symlinks: an installed command is a symlink in bin/, and the
+# scripts find their siblings, common.sh and include/msvc-compat.h relative to
+# themselves — which has to be the real directory, not ~/.local/bin.
+here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# shellcheck source=scripts/common.sh
+. "$here/common.sh"
+
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
 [[ $# -eq 0 ]] || {
 	echo "error: check-deps.sh takes no arguments" >&2
