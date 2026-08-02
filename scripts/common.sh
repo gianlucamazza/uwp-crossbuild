@@ -18,6 +18,9 @@
 #                              Three copies of the default could disagree, and
 #                              the symptom would be "tool not found" naming
 #                              neither copy
+#   the platform table         platform_env: which --platform values can be
+#                              built and what UWP_TARGET/UWP_ARCH_DIR each
+#                              means, which both front doors have to agree on
 #
 # That last one is why this file exists at all. build-app.sh and
 # build-project.sh had a copy each of "clear a stale layout, but only when it is
@@ -66,6 +69,19 @@ usage() {
 fetch() { # fetch <url> <destination>
 	curl -sSL --fail -o "$2.part" "$1" || die "download failed: $1"
 	mv "$2.part" "$2"
+}
+
+# The platform names both halves of a build: the conditions the evaluator
+# takes and the target build.sh compiles for. An explicit UWP_TARGET/
+# UWP_ARCH_DIR in the environment still wins, as everywhere else. A third
+# architecture is one row here plus the dlltool machine case in build.sh,
+# both of which refuse anything they do not name.
+platform_env() { # platform_env <x64|ARM64>
+	case "$1" in
+	x64) export UWP_TARGET="${UWP_TARGET:-x86_64-pc-windows-msvc}" UWP_ARCH_DIR="${UWP_ARCH_DIR:-x86_64}" ;;
+	ARM64) export UWP_TARGET="${UWP_TARGET:-aarch64-pc-windows-msvc}" UWP_ARCH_DIR="${UWP_ARCH_DIR:-aarch64}" ;;
+	*) die "--platform $1 is not one this can build: x64 or ARM64" ;;
+	esac
 }
 
 # A layout is the complete contents of a package: everything in it ships, and

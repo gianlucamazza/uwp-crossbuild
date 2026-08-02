@@ -111,6 +111,16 @@
     </None>
   </ItemGroup>
 
+  <!-- A native NuGet payload is architecture-specific: the project's own
+       $(Platform) condition names the runtimes/win-arm64 sibling, so an ARM64
+       build deploys the right DLL by evaluation, not by convention. -->
+  <ItemGroup Condition="'$(Platform)' == 'ARM64'">
+    <None Include="payload-arm64\thirdparty.dll">
+      <DeploymentContent>true</DeploymentContent>
+      <TargetPath>arm64\thirdparty.dll</TargetPath>
+    </None>
+  </ItemGroup>
+
   <!-- Only when the switch selects it, exactly as a real project gates a
        backend it does not always build. -->
   <ItemGroup Condition="'$(Backend)' == 'llamacpp'">

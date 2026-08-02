@@ -261,7 +261,18 @@ fails_with "a symlinked --out cannot hide the project inside it" "must not live 
 	"$scripts/build-app.sh" --project "$sym/data/layout/proj" --out "$sym/slink/layout"
 assert "the project behind the symlink kept its sources" "app.idl was deleted" \
 	test -f "$sym/data/layout/proj/app.idl"
-rm -rf "$sym" "$tmp" "$elsewhere"
+# The platform table lives in common.sh; both front doors refuse the same way.
+fails_with "a platform outside the matrix is refused" "x64 or ARM64" \
+	"$scripts/build-app.sh" --project "$tmp" --out "$elsewhere/layout" --platform Win32
+# The manifest ships verbatim, so its architecture has to agree with the
+# platform — the same refusal read-vcxproj.py makes, mirrored here.
+arch="$(mktemp -d)"
+touch "$arch/app.idl"
+echo '<Package><Identity ProcessorArchitecture="arm64"/><Applications><Application Id="x" Executable="hello.exe"/></Applications></Package>' \
+	>"$arch/AppxManifest.xml"
+fails_with "a manifest whose architecture is not the platform's is refused" "ProcessorArchitecture" \
+	"$scripts/build-app.sh" --project "$arch" --out "$elsewhere/layout"
+rm -rf "$arch" "$sym" "$tmp" "$elsewhere"
 
 echo "wine-tool.sh guards"
 # The tool is there but the contracts are not: midlrt would otherwise run with
@@ -409,6 +420,12 @@ succeeds_with "a DeploymentContent file keeps its package-relative target" "thir
 	"$read_vcxproj" "$vcxproj" --field deploy
 succeeds_with "an Image ships without asking to" "Assets/StoreLogo.png" \
 	"$read_vcxproj" "$vcxproj" --field deploy
+# A native NuGet payload is architecture-specific, and it is the project's own
+# $(Platform) condition that selects it — evaluation, not a hardcoded path.
+lacks "an arch-specific payload is absent by default" "payload-arm64" \
+	"$read_vcxproj" "$vcxproj" --field deploy
+succeeds_with "--platform ARM64 lets the project's own condition select it" "payload-arm64" \
+	"$read_vcxproj" "$vcxproj" --platform ARM64 --field deploy
 # A ProjectReference can be gated on a property, and MSBuild's /p: is the only
 # way to reach it — without --property the reference does not exist at all.
 lacks "a gated ProjectReference is absent by default" "library.vcxproj" \

@@ -106,9 +106,10 @@ opaque `0x8D160120`, so the script refuses them up front.
   localised resources need it at runtime, which is not testable while launching
   is; `--no-pri` skips the step, and with it the only reason makepri exists here.
 - **ARM64 builds, and has never executed.** With the aarch64 libraries splatted
-  (`xwin --arch x86_64 --arch aarch64 …`), `build-project.sh --platform ARM64`
-  — or `UWP_TARGET=aarch64-pc-windows-msvc UWP_ARCH_DIR=aarch64` for the other
-  scripts — produces an `IMAGE_FILE_MACHINE_ARM64` image with the app-container
+  (`xwin --arch x86_64 --arch aarch64 …`), `--platform ARM64` on either front
+  door (`build-project.sh`, `build-app.sh`) — or
+  `UWP_TARGET=aarch64-pc-windows-msvc UWP_ARCH_DIR=aarch64` for the scripts
+  below them — produces an `IMAGE_FILE_MACHINE_ARM64` image with the app-container
   bit, through the same midlrt/cppwinrt/makepri pipeline. Verified by reading
   the PE header; per the first limit, no device has run it. Re-run
   `fix-header-case.sh --canonical` after any re-splat: xwin rewrites the
