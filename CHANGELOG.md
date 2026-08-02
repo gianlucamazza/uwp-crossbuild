@@ -7,7 +7,7 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
-## Unreleased
+## 0.3.0 — 2026-08-02
 
 The three gaps 0.2.0 left tracked, closed: the `.vcxproj` path is exercised in
 CI, ARM64 has now been tried, and `resources.pri` is checked as a container
