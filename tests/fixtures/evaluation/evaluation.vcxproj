@@ -10,6 +10,22 @@
   <PropertyGroup Label="Globals">
     <ConfigurationType>Application</ConfigurationType>
     <RootNamespace>evaluation</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.22621.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <!-- Versions compare as versions, not as numbers: 10.0.22621.0 is not one.
+       TargetPlatformVersion is what a NuGet package reads, and Microsoft.Cpp
+       derives it from WindowsTargetPlatformVersion above — that file is skipped
+       here, so the derivation is not. -->
+  <PropertyGroup>
+    <ModernSdk Condition="'$(TargetPlatformVersion)' &gt;= '10.0.17134.0'">yes</ModernSdk>
+    <AncientSdk Condition="'$(TargetPlatformVersion)' &lt; '10.0.10240.0'">yes</AncientSdk>
+    <!-- The shape the C++/WinRT package uses: a string test guarding a
+         comparison that has no answer at all — 'ort' has no ordering. MSBuild
+         never asks for one, because Or short-circuits; evaluating both sides
+         would refuse a project that builds perfectly well.
+         MSBuildToolsVersion is the ToolsVersion attribute above. -->
+    <Guarded Condition="('$(MSBuildToolsVersion)' == '15.0') Or ('$(Backend)' &gt;= '15')">yes</Guarded>
   </PropertyGroup>
 
   <!-- The idiom every project opens with: a switch that reads itself to find
@@ -38,6 +54,8 @@
       </AdditionalIncludeDirectories>
       <PreprocessorDefinitions>
         NOMINMAX;
+        MODERN_SDK=$(ModernSdk);
+        GUARDED=$(Guarded);
         $(OrtDefine)
         $(LlamaDefine)
         %(PreprocessorDefinitions)
@@ -108,6 +126,10 @@
     <Error Condition="!Exists('packages\Some.Package.1.0.0\build\native\Some.Package.props')"
            Text="$(ErrorText)" />
   </Target>
+
+  <!-- A package .targets: skipped, listed, and never evaluated — it calls a
+       property function and runs a tool, neither of which happens here. -->
+  <Import Project="package.targets" Condition="Exists('package.targets')" />
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

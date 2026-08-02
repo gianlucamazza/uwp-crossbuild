@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What a NuGet package ships to run its own tool from MSBuild. Not evaluated:
+     this toolchain runs the SDK's tools itself. It is listed under "skipped" so
+     that its absence from the reading is visible rather than assumed. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PackageDir>$([System.IO.Path]::GetFullPath($(MSBuildThisFileDirectory)))</PackageDir>
+  </PropertyGroup>
+  <Target Name="RunTheTool" BeforeTargets="ClCompile">
+    <Exec Command="tool.exe --generate" />
+  </Target>
+</Project>

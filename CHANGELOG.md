@@ -22,6 +22,23 @@ time: the `.vcxproj` is read, not reconstructed.
   MSBuild's `/p:` — which matters more than it looks, because a project switch
   can decide whether a `ProjectReference` exists at all.
 
+  Conditions compare with `<`, `<=`, `>` and `>=` as MSBuild does — numerically,
+  or as versions, because `10.0.17134.0` is not a number and a project gates real
+  settings on it — and `and`/`or` short-circuit. That last one is not a nicety:
+  the C++/WinRT package guards a comparison that has no answer with a string test
+  beside it, and evaluating both sides refuses a project Microsoft ships and that
+  builds. `$(MSBuildToolsVersion)` comes from the project's own `ToolsVersion`
+  attribute, and `$(TargetPlatformVersion)` from its
+  `WindowsTargetPlatformVersion`, as `Microsoft.Cpp.props` derives it — left
+  empty, either one silently sends a version test down the wrong branch.
+
+  A `.targets` is **not** evaluated, deliberately: MSBuild's own convention
+  separates `.props`, which say what to compile, from `.targets`, which say what
+  MSBuild should do about it — and this toolchain does none of what MSBuild does,
+  it runs the SDK's tools itself. Every one skipped is listed under `skipped`
+  and named on stderr, because what is not read has to be visible rather than
+  assumed.
+
   **It refuses rather than guesses.** A compiler setting outside its mapping
   table, a property only Visual Studio supplies, a target that generates files:
   each stops the build by name. A build that silently differs from the one

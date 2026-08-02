@@ -23,10 +23,15 @@ What it evaluates:
                   is MSBuild's rule and the whole point of the common idiom
                   <Foo Condition="'$(Bar)' == 'x'">…</Foo> — those are listed
                   under "undefined" rather than refused.
-  conditions      '$(A)' == 'B', !=, Exists('p'), and, or, !, parentheses.
-  imports         Skipped under $(VCTargetsPath): that is MSBuild's own build
-                  system, not the project. Anything else — a NuGet .props — is
-                  evaluated recursively when it exists.
+  conditions      '$(A)' == 'B', !=, <, <=, >, >= (numeric, or version, as
+                  MSBuild compares them), Exists('p'), and, or, !, parentheses.
+                  and/or short-circuit, which is not a nicety: packages guard a
+                  numeric comparison with a string one and rely on it.
+  imports         A NuGet .props is evaluated recursively when it exists. Two
+                  kinds are not: anything under $(VCTargetsPath), which is
+                  MSBuild's own C++ build system, and any .targets, which is a
+                  description of the actions MSBuild would take — and this
+                  toolchain takes its own. Those are listed under "skipped".
   items           ClCompile, ClInclude, Midl, None, Image, AppxManifest,
                   ProjectReference, PackageReference; * and ** globs, Exclude.
   item metadata   ItemDefinitionGroup for ClCompile and Link, merged in order,
@@ -66,6 +71,12 @@ RESERVED = {
     "MSBuildExtensionsPath32",
     "MSBuildToolsPath",
     "NuGetPackageRoot",
+}
+
+# Properties Microsoft.Cpp.props computes from ones the project sets itself.
+DERIVED = {
+    "TargetPlatformVersion": "WindowsTargetPlatformVersion",
+    "TargetPlatformMinVersion": "WindowsTargetPlatformMinVersion",
 }
 
 # ---------------------------------------------------------------------------
@@ -128,6 +139,23 @@ IGNORED_CLCOMPILE = {
 }
 
 
+def ordinal(text):
+    """What MSBuild's <, <=, > and >= compare: a number, or a version.
+
+    `'$(TargetPlatformVersion)' >= '10.0.17134.0'` is the shape a project
+    actually uses, and 10.0.17134.0 is not a number. Returns None for anything
+    that is neither, which the caller refuses rather than ordering by accident.
+    """
+    try:
+        return (float(text),)
+    except ValueError:
+        pass
+    parts = text.split(".")
+    if len(parts) > 1 and all(part.isdigit() for part in parts):
+        return tuple(int(part) for part in parts)
+    return None
+
+
 def tag(element):
     """The element name without the MSBuild namespace, which not every file has."""
     return element.tag[len(NS) :] if element.tag.startswith(NS) else element.tag
@@ -149,6 +177,7 @@ class Evaluator:
         # whether a ProjectReference exists at all.
         self.globals = dict(globals_ or {})
         self.undefined = set()
+        self.skipped = set()
         self.items = {}
         self.clcompile = {}  # merged ItemDefinitionGroup metadata
         self.link = {}
@@ -201,6 +230,13 @@ class Evaluator:
                 )
             if name in self.properties:
                 return self.properties[name]
+            # Microsoft.Cpp.props derives these from the project's own
+            # properties, and that file is skipped here on purpose. A NuGet
+            # package's conditions read them, so they are derived the same way
+            # rather than left empty — an empty one silently changes which
+            # branch of a version test is taken.
+            if name in DERIVED and DERIVED[name] in self.properties:
+                return self.properties[DERIVED[name]]
             if name in RESERVED:
                 raise Refusal(
                     f"{where}: $({name}) is supplied by Visual Studio, not by the "
@@ -219,9 +255,9 @@ class Evaluator:
     TOKEN = re.compile(
         r"""\s*(?:
             (?P<string>'[^']*')
-          | (?P<op>==|!=|\(|\)|!)
+          | (?P<op><=|>=|==|!=|<|>|\(|\)|!)
           | (?P<word>[A-Za-z_][A-Za-z0-9_]*)
-          | (?P<bare>[^\s()'!=]+)
+          | (?P<bare>[^\s()'!=<>]+)
         )""",
         re.X,
     )
@@ -247,35 +283,58 @@ class Evaluator:
             raise Refusal(f"{where}: trailing {rest[0][1]!r} in condition {text!r}")
         return result
 
-    def _or(self, tokens, text, where):
-        left, tokens = self._and(tokens, text, where)
+    # and/or short-circuit, as they do in MSBuild — and this is not a detail.
+    # The C++/WinRT package guards a numeric comparison with a string one:
+    #
+    #   ('$(MSBuildToolsVersion)' == 'Current') Or ('$(MSBuildToolsVersion)' >= '15')
+    #
+    # 'Current' is not a number, so the right-hand side has no answer; MSBuild
+    # never asks for one, because the left is already true. Evaluating both
+    # sides would refuse a condition that Microsoft ships and that works.
+    # `skip` means "parse this, do not ask what it means": the operand is on the
+    # far side of a short circuit. It has to reach all the way down, including
+    # through parentheses — the guarded comparison a package writes is
+    # parenthesised, so a flag that stops at the bracket stops where it matters.
+    def _or(self, tokens, text, where, skip=False):
+        left, tokens = self._and(tokens, text, where, skip)
         while tokens and tokens[0][0] == "word" and tokens[0][1].lower() == "or":
-            right, tokens = self._and(tokens[1:], text, where)
-            left = left or right
+            if left or skip:
+                _, tokens = self._and(tokens[1:], text, where, skip=True)
+            else:
+                left, tokens = self._and(tokens[1:], text, where)
         return left, tokens
 
-    def _and(self, tokens, text, where):
-        left, tokens = self._unary(tokens, text, where)
+    def _and(self, tokens, text, where, skip=False):
+        left, tokens = self._unary(tokens, text, where, skip)
         while tokens and tokens[0][0] == "word" and tokens[0][1].lower() == "and":
-            right, tokens = self._unary(tokens[1:], text, where)
-            left = left and right
+            if not left or skip:
+                _, tokens = self._unary(tokens[1:], text, where, skip=True)
+            else:
+                left, tokens = self._unary(tokens[1:], text, where)
         return left, tokens
 
-    def _unary(self, tokens, text, where):
+    def _unary(self, tokens, text, where, skip=False):
         if not tokens:
             raise Refusal(f"{where}: condition {text!r} ends early")
         kind, value = tokens[0]
         if kind == "op" and value == "!":
-            result, tokens = self._unary(tokens[1:], text, where)
+            result, tokens = self._unary(tokens[1:], text, where, skip)
             return not result, tokens
         if kind == "op" and value == "(":
-            result, tokens = self._or(tokens[1:], text, where)
+            result, tokens = self._or(tokens[1:], text, where, skip)
             if not tokens or tokens[0][1] != ")":
                 raise Refusal(f"{where}: unbalanced ( in condition {text!r}")
             return result, tokens[1:]
-        return self._comparison(tokens, text, where)
+        return self._comparison(tokens, text, where, skip)
 
-    def _comparison(self, tokens, text, where):
+    RELATIONAL = {
+        "<": lambda a, b: a < b,
+        "<=": lambda a, b: a <= b,
+        ">": lambda a, b: a > b,
+        ">=": lambda a, b: a >= b,
+    }
+
+    def _comparison(self, tokens, text, where, skip=False):
         kind, value = tokens[0]
         rest = tokens[1:]
         # Exists('path'), the one function projects here actually use.
@@ -291,6 +350,21 @@ class Evaluator:
             # MSBuild compares strings case-insensitively.
             equal = value.lower() == right.lower()
             return (equal if rest[0][1] == "==" else not equal), rest[2:]
+        if rest and rest[0][0] == "op" and rest[0][1] in self.RELATIONAL:
+            if len(rest) < 2:
+                raise Refusal(f"{where}: condition {text!r} ends after {rest[0][1]}")
+            operator, right = rest[0][1], rest[1][1]
+            if skip:
+                # Short-circuited away: MSBuild would not ask, so neither does
+                # this — and the operands may well have no ordering at all.
+                return False, rest[2:]
+            left_number, right_number = ordinal(value), ordinal(right)
+            if left_number is None or right_number is None:
+                raise Refusal(
+                    f"{where}: {value!r} {operator} {right!r} in condition {text!r} "
+                    f"compares something that is neither a number nor a version"
+                )
+            return self.RELATIONAL[operator](left_number, right_number), rest[2:]
         if kind in ("string", "bare", "word") and value.lower() in ("true", "false"):
             return value.lower() == "true", rest
         raise Refusal(
@@ -305,6 +379,13 @@ class Evaluator:
             root = ET.parse(path).getroot()
         except ET.ParseError as error:
             raise Refusal(f"{where}: not readable as XML: {error}") from error
+        # The project's own ToolsVersion attribute is where $(MSBuildToolsVersion)
+        # comes from, and packages compare it: the C++/WinRT one asks whether it
+        # is at most 15. Left undefined it would be empty, and an empty string
+        # has no place in a numeric comparison — the branch would not be wrong,
+        # it would be unanswerable.
+        if path == self.project and root.get("ToolsVersion"):
+            self.properties.setdefault("MSBuildToolsVersion", root.get("ToolsVersion"))
         # Per-file, and restored afterwards: an imported .props uses it to point
         # at its own package directory, not at the project's.
         outer = self.properties.get("MSBuildThisFileDirectory")
@@ -391,6 +472,20 @@ class Evaluator:
                 f"{where}: <Import Project={raw!r}> has no Condition and no file. "
                 f"If it is a NuGet package, restore it first: restore-nuget.sh"
             )
+        # A .props says what to compile; a .targets says what MSBuild should do
+        # about it. MSBuild's own convention separates them, which is why every
+        # NuGet package ships both and why a project imports the first at the
+        # top and the second at the bottom.
+        #
+        # This tool reproduces none of MSBuild's actions — gen-projection.sh,
+        # build.sh and build-project.sh *are* the actions, and they run the
+        # SDK's own cppwinrt.exe rather than the one a package would invoke, for
+        # the version reason in README §13. So a .targets is not evaluated, and
+        # it is listed rather than passed over quietly: if one of them were the
+        # only place a project defined something, that has to be visible.
+        if target.suffix.lower() == ".targets":
+            self.skipped.add(target.name)
+            return
         self._read(target, importer=where)
 
     def _item_group(self, group, where):
@@ -433,6 +528,27 @@ class Evaluator:
         except (ValueError, IndexError) as error:
             raise Refusal(f"{where}: cannot expand {pattern!r}: {error}") from error
 
+    # ItemDefinitionGroup sections this does not take its settings from, and why.
+    # A section maps to the metadata that is inert *within* it; None means the
+    # whole section is, because this toolchain drives that tool itself. Metadata
+    # outside the set is refused by name rather than dropped: the point of the
+    # table is that nothing is skipped without somebody having said it may be.
+    INERT_SECTIONS = {
+        # gen-projection.sh runs midlrt with the flags the SDK needs, which are
+        # not the ones a Visual Studio project suggests. Same for the resource
+        # compiler, which has no part in a layout, and for the librarian:
+        # build.sh --static-lib archives objects and nothing else.
+        "Midl": None,
+        "ResourceCompile": None,
+        "Lib": None,
+        # A reference here becomes a .lib that is linked, never a file copied
+        # beside the executable, so Private — "copy the reference's output to
+        # the output directory" — has nothing to act on. Anything that says
+        # whether to link it at all would, and is not in this set.
+        "ProjectReference": {"Private"},
+        "Reference": {"Private"},
+    }
+
     def _item_definitions(self, group, where):
         if not self.condition(group.get("Condition"), where):
             return
@@ -442,23 +558,24 @@ class Evaluator:
                 self._merge(self.clcompile, element, where)
             elif name == "Link":
                 self._merge(self.link, element, where)
-            elif name in (
-                "Midl",
-                "ResourceCompile",
-                "Lib",
-                "PreBuildEvent",
-                "PostBuildEvent",
-            ):
-                # Midl settings are gen-projection.sh's business; a build event
-                # is a shell command MSBuild runs and this does not.
-                if (
-                    name in ("PreBuildEvent", "PostBuildEvent")
-                    and "".join(element.itertext()).strip()
-                ):
+            elif name in ("PreBuildEvent", "PostBuildEvent"):
+                # A shell command MSBuild runs as part of the build. What it
+                # produces cannot be reproduced by reading the project.
+                if "".join(element.itertext()).strip():
                     raise Refusal(
                         f"{where}: <{name}> runs a command as part of the build, "
                         f"which is not reproduced here"
                     )
+            elif name in self.INERT_SECTIONS:
+                inert = self.INERT_SECTIONS[name]
+                if inert is not None:
+                    for child in element:
+                        if tag(child) not in inert:
+                            raise Refusal(
+                                f"{where}: <ItemDefinitionGroup><{name}><{tag(child)}> "
+                                f"changes how a reference is consumed, and this builds "
+                                f"every reference the same way"
+                            )
             else:
                 raise Refusal(
                     f"{where}: <ItemDefinitionGroup><{name}> is not understood"
@@ -535,6 +652,7 @@ class Description:
         self.deploy = self._deploy()
         self.packages = self._packages()
         self.undefined = sorted(evaluator.undefined)
+        self.skipped = sorted(evaluator.skipped)
 
     def _executable(self):
         """The name the OS will look for, taken from the manifest and checked
@@ -775,6 +893,7 @@ class Description:
             "deploy": self.deploy,
             "packages": self.packages,
             "undefined": self.undefined,
+            "skipped": self.skipped,
         }
 
     def as_flags(self):
@@ -892,6 +1011,13 @@ def main():
             "note: no value anywhere for "
             + ", ".join(f"$({name})" for name in description.undefined)
             + " — empty, as MSBuild would have them",
+            file=sys.stderr,
+        )
+    if description.skipped and not arguments.field:
+        print(
+            "note: not evaluated: "
+            + ", ".join(description.skipped)
+            + " — a .targets is MSBuild's actions, and this toolchain is its own",
             file=sys.stderr,
         )
     return 0

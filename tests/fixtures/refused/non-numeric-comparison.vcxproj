@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A relational comparison against something with no ordering. MSBuild raises
+     MSB4086 here; a project that means it to be false says so with a string
+     test first, and short-circuiting is what makes that work. -->
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><ConfigurationType>Application</ConfigurationType></PropertyGroup>
+  <PropertyGroup Condition="'$(Toolset)' &gt;= '15'">
+    <Something>yes</Something>
+  </PropertyGroup>
+</Project>

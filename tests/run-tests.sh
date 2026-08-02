@@ -303,6 +303,22 @@ lacks "a .c file is not listed among the C++ ones" "one.c" \
 	"$read_vcxproj" "$vcxproj" --field sources.cpp
 # README, "Fourteen things", 1: C++/WinRT below C++20 reaches for
 # <experimental/coroutine>, whose first line is an #error refusing clang.
+# 10.0.22621.0 is not a number, and MSBuild compares it as a version. A project
+# gates real settings on this, so getting it wrong changes what is compiled.
+succeeds_with "a version comparison decides a define" "MODERN_SDK=yes" \
+	"$read_vcxproj" "$vcxproj" --field defines
+lacks "and the branch it excludes stays out" "ANCIENT" \
+	"$read_vcxproj" "$vcxproj" --field defines
+# The C++/WinRT package guards a comparison that has no answer with a string
+# test. Evaluating both sides refuses a project Microsoft ships and that builds.
+succeeds_with "and/or short-circuit, so a guarded comparison is never asked" "GUARDED=yes" \
+	"$read_vcxproj" "$vcxproj" --field defines
+# $(MSBuildToolsVersion) is the project's own ToolsVersion attribute; left empty
+# it would turn that guard into a comparison against nothing.
+succeeds_with "a .targets is listed rather than passed over quietly" "package.targets" \
+	"$read_vcxproj" "$vcxproj" --field skipped
+lacks "and nothing it defines reaches the build" "PackageDir" \
+	"$read_vcxproj" "$vcxproj" --json
 succeeds_with "stdcpp17 is overridden to c++20, not honoured" "c++20" \
 	"$read_vcxproj" "$vcxproj" --field std.cxx
 succeeds_with "the C standard comes from LanguageStandard_C" "c11" \
@@ -340,8 +356,10 @@ fails_with "a property only Visual Studio supplies" "supplied by Visual Studio" 
 	"$read_vcxproj" "$refused/reserved-property.vcxproj"
 fails_with "a compiler setting outside the mapping table" "EnableEnhancedInstructionSet" \
 	"$read_vcxproj" "$refused/unknown-metadata.vcxproj"
-fails_with "a condition in a syntax it does not implement" "cannot read condition" \
+fails_with "a condition calling a function it does not implement" "not a comparison" \
 	"$read_vcxproj" "$refused/unknown-condition.vcxproj"
+fails_with "an ordering asked of something that has none" "neither a number nor a version" \
+	"$read_vcxproj" "$refused/non-numeric-comparison.vcxproj"
 fails_with "a target that produces a file" "<Copy>" \
 	"$read_vcxproj" "$refused/target-with-task.vcxproj"
 fails_with "a project type nothing here has ever built" "DynamicLibrary" \

@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A condition in a syntax this evaluator does not implement. -->
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<!-- A condition that calls an MSBuild function this evaluator does not
+     implement. Deciding it by guessing which branch is likelier is how a build
+     quietly stops matching MSBuild's. -->
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup><ConfigurationType>Application</ConfigurationType></PropertyGroup>
-  <PropertyGroup Condition="'$(Version)' &gt;= '3'">
+  <PropertyGroup Condition="HasTrailingSlash('$(OutDir)')">
     <Something>yes</Something>
   </PropertyGroup>
 </Project>
