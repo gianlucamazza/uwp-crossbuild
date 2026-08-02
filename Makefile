@@ -16,7 +16,7 @@ DOCDIR ?= $(PREFIX)/share/doc/uwp-crossbuild
 
 SCRIPTS := build.sh build-app.sh build-project.sh check-deps.sh fetch-sdk.sh \
            fix-header-case.sh gen-projection.sh gen-resources.sh \
-           restore-nuget.sh wine-tool.sh
+           restore-nuget.sh run-on-device.sh wine-tool.sh
 # read-vcxproj.py is Python because it is 500 lines of MSBuild evaluator, which
 # does not belong in a heredoc. It is installed and exposed like the rest.
 SCRIPTS += read-vcxproj.py
@@ -39,7 +39,8 @@ install:
 	           $(DESTDIR)$(BINDIR) $(DESTDIR)$(DOCDIR)
 	install -m 0755 $(addprefix scripts/,$(SCRIPTS)) $(DESTDIR)$(LIBDIR)/scripts/
 	install -m 0644 $(addprefix scripts/,$(LIBS)) $(DESTDIR)$(LIBDIR)/scripts/
-	install -m 0644 include/msvc-compat.h $(DESTDIR)$(LIBDIR)/include/
+	install -m 0644 include/msvc-compat.h include/appcontainer-pointers.def \
+	           $(DESTDIR)$(LIBDIR)/include/
 	install -m 0644 README.md CHANGELOG.md LICENSE $(DESTDIR)$(DOCDIR)/
 	install -m 0644 docs/*.md $(DESTDIR)$(DOCDIR)/
 	@set -e; for s in $(SCRIPTS); do \

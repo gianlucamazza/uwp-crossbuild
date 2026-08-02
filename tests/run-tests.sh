@@ -435,6 +435,24 @@ assert "the .vcxproj lists exactly the sources the directory holds" \
 	test "$("$read_vcxproj" "$example" --field sources.cpp | sort)" \
 	= "$(cd "$here/../examples/hello-uwp" && printf '%s\n' *.cpp)"
 
+echo "run-on-device.sh guards"
+# Nothing here reaches a console: what is under test is argument validation and
+# the configuration error, which has to name all three variables — a partial
+# configuration otherwise surfaces as an authentication failure blamed on the
+# device.
+fails_with "--layout or --package is required" "--layout or --package is required" \
+	"$scripts/run-on-device.sh"
+fails_with "and not both" "exclusive" \
+	"$scripts/run-on-device.sh" --layout /tmp --package /tmp/x.msix
+fails_with "a layout that is not there" "no such layout" \
+	"$scripts/run-on-device.sh" --layout /nonexistent
+fails_with "a layout without a manifest is not a layout" "AppxManifest.xml" \
+	"$scripts/run-on-device.sh" --layout "$here/fixtures"
+fails_with "an unconfigured device names every variable it needs" "OPENAPPX_DEVICE_PASSWORD" \
+	env -u UWP_DEVICE_URL -u UWP_DEVICE_USER -u OPENAPPX_DEVICE_PASSWORD \
+	UWP_DEVICE_ENV=/nonexistent \
+	"$scripts/run-on-device.sh" --package "$here/run-tests.sh"
+
 echo "restore-nuget.sh"
 # Nothing here goes to the network: what is under test is the reading of the
 # package list and the refusals, not nuget.org.
