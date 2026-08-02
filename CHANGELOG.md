@@ -27,6 +27,15 @@ a specific version, and knowing which is the whole point of writing it down.
 
 ### Changed
 
+- **The `/MD → /MT` app-container override is now tested, and is gotcha 19.**
+  It is the one place `read-vcxproj.py` changes MSBuild's answer instead of
+  mirroring or refusing it, and neither branch was covered: the evaluation
+  fixture never set `AppContainerApplication`. The fixture now sets it — every
+  Visual Studio UWP template does — and pins the override for both runtimes
+  plus the passthrough via `--property AppContainerApplication=false`. The
+  story behind it (no store CRT import libraries exist to link against;
+  observed as 0x80270300) moves from a code comment into the README's gotcha
+  list, which becomes "Nineteen things".
 - **The default SDK version is pinned once, in `common.sh`.** It was three
   literal copies — `fetch-sdk.sh`, `gen-projection.sh`, `wine-tool.sh` — and
   fetch-sdk.sh *writes* the layout at that version while the other two *read*

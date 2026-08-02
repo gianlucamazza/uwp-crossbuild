@@ -172,7 +172,7 @@ Every location, version and target the scripts assume can be overridden:
 `OPENAPPX_DEVICE_PASSWORD` belongs to openappx and completes the device trio;
 `wine-tool.sh` also honours `WINEDEBUG`, defaulting it to `-all`.
 
-## Eighteen things that will waste your afternoon
+## Nineteen things that will waste your afternoon
 
 Every one of these fails while pointing somewhere else. The scripts handle them;
 this is the record of why they exist.
@@ -301,6 +301,18 @@ invalid`, which is true — that is not legal XML — but says nothing about
     at build time) ahead of `kernel32.lib`, rerouting exactly those two names
     to `KERNELBASE.dll`, which exports them and is present in every
     app-container process.
+
+19. **`/MD` cannot work in the app container.** MSBuild's UWP toolset satisfies
+    the DLL runtimes with the store CRT — `VCRUNTIME140_APP.dll` and friends,
+    delivered by the `Microsoft.VCLibs` framework package — but xwin carries no
+    store import libraries, because modern MSVC no longer ships them. Linked
+    `/MD` here, the executable imports the desktop `VCRUNTIME140.dll`, which
+    does not resolve inside the container: the package installs, and activation
+    fails as `0x80270300`. Observed end to end on Xbox OS 26100.8866; the same
+    application statically linked launches. So `read-vcxproj.py` maps
+    `MultiThreadedDLL`/`MultiThreadedDebugDLL` to their static counterparts
+    whenever `AppContainerApplication` is true — the one place it deliberately
+    changes what MSBuild would do rather than mirroring or refusing it.
 
 ## Layout
 
