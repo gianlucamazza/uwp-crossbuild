@@ -397,6 +397,43 @@ rm -rf "$here/fixtures/evaluation/layout"
 fails_with "a library is not a package" "Only an Application" \
 	"$scripts/build-project.sh" --project "$here/fixtures/evaluation/library.vcxproj" \
 	--out /tmp/nowhere
+# The platform picks the compiler target as well as the MSBuild conditions;
+# one this cannot compile for has to stop here, not link x64 objects under
+# another platform's settings.
+fails_with "a platform nothing here can compile for" "x64 or ARM64" \
+	"$scripts/build-project.sh" --project "$vcxproj" --platform Win32 \
+	--out /tmp/nowhere
+# The winmd is named after the namespace the .idl declares — the manifest's
+# EntryPoint is resolved against <namespace>.winmd — so an .idl declaring none
+# stops the build here, not on a package that installs and fails to launch.
+nameless_out="$(mktemp -d)"
+fails_with "an idl with no namespace cannot name the winmd" "declares no namespace" \
+	"$scripts/build-project.sh" --project "$here/fixtures/evaluation/nameless.vcxproj" \
+	--out "$nameless_out"
+rm -rf "$nameless_out"
+
+echo "the example project reads as the directory build-app.sh builds"
+# examples/hello-uwp carries the project twice — the directory build-app.sh
+# reads, and the .vcxproj build-project.sh reads. These pin the second form to
+# the first, so the evaluator is exercised against a project that is actually
+# in the repository rather than only against the corpus outside it.
+example="$here/../examples/hello-uwp/hello-uwp.vcxproj"
+succeeds_with "the manifest and the project agree on hello.exe" "hello.exe" \
+	"$read_vcxproj" "$example" --field executable
+succeeds_with "the assets arrive through the glob" "Assets/StoreLogo.png" \
+	"$read_vcxproj" "$example" --field deploy
+succeeds_with "Visual Studio's stdcpp17 is overridden to c++20" "c++20" \
+	"$read_vcxproj" "$example" --field std.cxx
+succeeds_with "the pch is the one build-app.sh would precompile" "pch.h" \
+	"$read_vcxproj" "$example" --field pch
+succeeds_with "--flags speaks clang-cl" "/O2" \
+	"$read_vcxproj" "$example" --flags
+# A source added to the directory and not to the .vcxproj (or the reverse)
+# builds two different applications under the same name.
+assert "the .vcxproj lists exactly the sources the directory holds" \
+	"vcxproj: $("$read_vcxproj" "$example" --field sources.cpp | sort | tr '\n' ' ') dir: $(cd "$here/../examples/hello-uwp" && printf '%s ' *.cpp)" \
+	test "$("$read_vcxproj" "$example" --field sources.cpp | sort)" \
+	= "$(cd "$here/../examples/hello-uwp" && printf '%s\n' *.cpp)"
 
 echo "restore-nuget.sh"
 # Nothing here goes to the network: what is under test is the reading of the

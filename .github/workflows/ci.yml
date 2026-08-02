@@ -154,6 +154,22 @@ jobs:
       - name: Build the UWP example
         run: scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
+      - name: Build the same example from its .vcxproj
+        # The other front door. Same directory, read through hello-uwp.vcxproj
+        # by read-vcxproj.py and build-project.sh — the path a real Visual
+        # Studio project takes, exercised here against a project that is in
+        # the repository (issue #4). Both layouts must install.
+        run: |
+          scripts/build-project.sh --project examples/hello-uwp/hello-uwp.vcxproj \
+            --out /tmp/hello-project-layout
+          test -f /tmp/hello-project-layout/hello.exe
+          # Named after the namespace the .idl declares, which is what the
+          # manifest's EntryPoint resolves against — not after app.idl.
+          test -f /tmp/hello-project-layout/hello.winmd
+          value=$(objdump -p /tmp/hello-project-layout/hello.exe |
+                  awk '/DllCharacteristics/ {print $2}')
+          [ $((0x$value & 0x1000)) -ne 0 ] || { echo "not an app-container image"; exit 1; }
+
       - name: The layout holds only what ships
         # Everything in a layout goes into the package, and makepri indexes it:
         # a projection or an object left in there is shipped and described in
@@ -178,5 +194,6 @@ jobs:
         run: |
           pip install openappx
           openappx validate --root /tmp/hello-layout
+          openappx validate --root /tmp/hello-project-layout
           openappx pack --root /tmp/hello-layout --out /tmp/hello.msix
           openappx inspect --package /tmp/hello.msix
