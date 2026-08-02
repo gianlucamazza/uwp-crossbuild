@@ -3,15 +3,14 @@
 **Compile C++/WinRT for Windows, from Linux.** Companion to
 [openappx](https://github.com/gianlucamazza/openappx), which packages, signs and deploys the result.
 
-> **Status: a real application built here installs on a console.** Not just the
-> example — an existing UWP project of 216 translation units, a large
+> **Status: what is built here runs on a console.** `examples/hello-uwp` has
+> been launched and observed running on an Xbox Series S dev kit — and not just
+> the example: an existing UWP project of 216 translation units, a large
 > third-party inference library among them, compiled and linked from its own
 > `.vcxproj` files **without changing a line of its source**, then packed,
-> signed and installed on an Xbox One dev kit.
-> [docs/porting-a-vcxproj.md](docs/porting-a-vcxproj.md) is the recipe.
->
-> Nothing built here has been seen to _run_, for a reason that is not about the
-> build: see [Known limits](#known-limits).
+> signed and installed on the same console.
+> [docs/porting-a-vcxproj.md](docs/porting-a-vcxproj.md) is the recipe;
+> [Known limits](#known-limits) is the honest edge (one console, one OS build).
 
 ## Install
 
@@ -381,8 +380,7 @@ from any of those downloads belongs in a commit.
   what is missing: a compiler setting with no entry in the mapping table, a
   property only Visual Studio supplies, a target that generates sources. Each is
   a table row and a fixture, not an investigation.
-- **A device that can actually launch a sideloaded app.** This one cannot — not
-  even Microsoft Edge — so nothing built here has been seen to run. That needs
-  different hardware, not a different package. It is also what would turn two
-  header-level verifications into real ones: the ARM64 image, and whether the
-  loader accepts what `makepri` writes.
+- **A second device.** Everything observed running has run on one Xbox Series S
+  and one OS build. Another console — or another device family entirely — is
+  what would turn two header-level verifications into real ones: the ARM64
+  image, and whether the loader accepts what `makepri` writes at runtime.

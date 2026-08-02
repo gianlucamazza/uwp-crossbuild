@@ -166,18 +166,19 @@ changed for a development build.
 
 ## What it cost, measured
 
-|                                 |                                 |
-| ------------------------------- | ------------------------------- |
-| Sources compiled                | 216 of 216                      |
-| Executable                      | 7.5 MB, PE32+, app container    |
-| Pack                            | 4.5 s → a 20.8 MB `.msix`       |
-| Install                         | accepted by an Xbox One dev kit |
-| Changes to the project's source | none                            |
+|                                 |                                      |
+| ------------------------------- | ------------------------------------ |
+| Sources compiled                | 216 of 216                           |
+| Executable                      | 7.5 MB, PE32+, app container         |
+| Pack                            | 4.5 s → a 20.8 MB `.msix`            |
+| Install                         | accepted by an Xbox Series S dev kit |
+| Changes to the project's source | none                                 |
 
 ## What it did not prove
 
-The application has never been seen to run. The test console refuses to launch
-every sideloaded package, Microsoft Edge included, so it cannot answer that
-question — see [Known limits](../README.md#known-limits). A build that installs
-is not a build that works, and nothing here should be read as claiming
-otherwise.
+This application has not been seen to run — only to install. What blocked
+launching for so long turned out to be client bugs, since fixed (the in-repo
+example now launches and runs on the same console: see
+[Known limits](../README.md#known-limits)), but this project itself has not
+been started since. A build that installs is not a build that works, and
+nothing here should be read as claiming otherwise.

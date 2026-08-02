@@ -324,7 +324,7 @@ console installs, with no Windows anywhere.
 
 ### Established
 
-- **A UWP application built here installs on an Xbox One dev kit.** It has never
+- **A UWP application built here installs on an Xbox Series S dev kit.** It has never
   been seen to run: the console refuses to launch every sideloaded package,
   Microsoft Edge included, with `0x8D160120`. That clears the cross-build of the
   failure without demonstrating anything positive — running remains untested.
