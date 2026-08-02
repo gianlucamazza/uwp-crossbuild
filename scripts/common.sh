@@ -5,7 +5,7 @@
 #
 #     . "$here/common.sh"
 #
-# Three kinds of thing live here, and nothing else does. Anything specific to
+# Four kinds of thing live here, and nothing else does. Anything specific to
 # one script belongs in that script, where its reasons are.
 #
 #   the shape of an error      die, and the argument checks that produce one
@@ -13,12 +13,23 @@
 #                              routine, not two that drift apart
 #   the layout doctrine        prepare_layout: what may be cleared and what may
 #                              not, which both front doors have to agree on
+#   the default SDK version    fetch-sdk.sh writes the layout at this version;
+#                              gen-projection.sh and wine-tool.sh read it back.
+#                              Three copies of the default could disagree, and
+#                              the symptom would be "tool not found" naming
+#                              neither copy
 #
 # That last one is why this file exists at all. build-app.sh and
 # build-project.sh had a copy each of "clear a stale layout, but only when it is
 # recognisably one", and within a day they disagreed about what counts as
 # recognisable — same message, different behaviour, and only one of them let a
 # half-built layout be rebuilt without a manual rm.
+
+# The one default every SDK consumer must agree on. UWP_SDK_VERSION still
+# overrides it everywhere; the installer URL stays in fetch-sdk.sh beside the
+# cross-check that both describe the same SDK.
+# shellcheck disable=SC2034  # consumed by the scripts that source this file
+UWP_SDK_VERSION_DEFAULT="10.0.22621.0"
 
 die() {
 	echo "error: $*" >&2
