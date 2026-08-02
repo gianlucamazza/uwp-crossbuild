@@ -2,6 +2,44 @@
 
 Notable changes per release. Dates are the day the work landed.
 
+## Unreleased
+
+The day the toolchain's output was first observed _running_: hello-uwp, built
+by `build-project.sh` and deployed by `run-on-device.sh`, launched on an Xbox
+Series S (OS 26100.8866) — process in the task list, text on the screen. What
+stood between the existing builds and that screen was never the compiler: two
+Device Portal client bugs in openappx (fixed there: an AUMID built with a
+double underscore, a missing `package` parameter), a missing
+`winrt::init_apartment()` in the example (gotcha 17), and one absent apiset
+(gotcha 18).
+
+### Added
+
+- **`scripts/run-on-device.sh`** — a layout onto the console, installed and
+  launched: packs, signs, uninstalls the previous registration (a same-name
+  Add otherwise fails with 0x80070057), installs, resolves the
+  PackageFullName the device assigned, and starts the app. openappx does every
+  wire operation; the machine-local half — device URL, user, password — lives
+  in `~/.config/uwp-crossbuild/device-env` and is never committed, like the
+  signing `dev.pfx` beside it.
+- **`include/appcontainer-pointers.def`** — `EncodePointer`/`DecodePointer`
+  rerouted to KERNELBASE.dll. xwin's `kernel32.lib` imports the pair from
+  `api-ms-win-core-util-l1-1-0.dll`, which the Xbox app container does not
+  provide; the loader then fails the launch as 0x80070002 without naming the
+  file. The static CRT reaches for them in its /O2 paths, so a release build
+  could die where the debug build launched. `--uwp` links the generated import
+  library ahead of kernel32.lib (gotcha 18).
+
+### Fixed
+
+- **`examples/hello-uwp` initialises the MTA before `Application::Start`.**
+  XAML requires the first access to the Application object to come from the
+  multi-threaded apartment; without it the factory call throws
+  `winrt::hresult_wrong_thread` into `terminate` before any window exists,
+  reported by the activation manager only as 0x8027025B. The example's old
+  comment claimed Start wanted no apartment at all — plausible, documented,
+  and wrong; four symbolised crash dumps say otherwise (gotcha 17).
+
 Version numbers here track **what the toolchain can do**, not the pinned
 versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for

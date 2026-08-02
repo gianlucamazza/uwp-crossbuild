@@ -59,7 +59,17 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
 # an existing Visual Studio project, read rather than reconstructed
 scripts/build-project.sh --project uwp/app.vcxproj --out /tmp/layout
+
+# onto the console: packed, signed, installed, launched (openappx does the wire)
+scripts/run-on-device.sh --layout /tmp/hello-layout
 ```
+
+`run-on-device.sh` reads the device half of its configuration from
+`~/.config/uwp-crossbuild/device-env` — `UWP_DEVICE_URL`, `UWP_DEVICE_USER` and
+`OPENAPPX_DEVICE_PASSWORD`, as shown in Dev Home → Remote Access — and signs
+with `~/.config/uwp-crossbuild/dev.pfx`, whose subject must equal the
+manifest's `Publisher` and whose `.cer` the console must trust once
+(`openappx deploy … --install-cert`). Neither file belongs in a repository.
 
 ## What works
 
@@ -76,15 +86,19 @@ scripts/build-project.sh --project uwp/app.vcxproj --out /tmp/layout
 | ARM64                         | `--platform ARM64`, same pipeline                     | ✅ ARM64 PE — see Known limits |
 | Link a whole application      | `lld-link`                                            | ✅ 7.5 MB PE32+                |
 | Package, sign, deploy         | [openappx](https://github.com/gianlucamazza/openappx) | ✅ installed on an Xbox        |
+| Launch, on the console        | `run-on-device.sh`, Device Portal                     | ✅ observed running (Series S) |
 
 ## Known limits
 
-- **Never seen to run.** It installs; `/api/taskmanager/app` then answers
-  `0x8D160120`. That turns out to be the console: it refuses to launch **every**
-  sideloaded package, including Microsoft Edge as Microsoft signed and shipped
-  it. So the failure says nothing about the cross-build — and equally, nothing
-  here has ever been observed executing on a device. Treat running as untested,
-  not as broken.
+- **Runs, on one console.** `examples/hello-uwp`, built by `build-project.sh`
+  and deployed by `run-on-device.sh`, has been launched and observed running on
+  an Xbox Series S (OS 26100.8866) — process in the task list, text on the
+  screen. The earlier record here said the console refused to launch _every_
+  sideloaded package with `0x8D160120`, Microsoft Edge included; that turned
+  out to be two bugs in openappx's Device Portal client (an AUMID built with a
+  double underscore, and a missing `package` parameter), and it never said
+  anything about the console or the packages. One console is not a matrix:
+  other OS builds and devices remain untried.
 - **`resources.pri` turns out to be optional for install.** Packaged with and
   without it, both variants installed. Kept in `build-app.sh` by default because
   localised resources need it at runtime, which is not testable while launching
@@ -129,7 +143,7 @@ Nothing from Microsoft is redistributed: both `fetch-sdk.sh` and `xwin` download
 from Microsoft's CDN at run time under the SDK licence. CI must re-run them
 rather than cache the result in an artefact store.
 
-## Sixteen things that will waste your afternoon
+## Eighteen things that will waste your afternoon
 
 Every one of these fails while pointing somewhere else. The scripts handle them;
 this is the record of why they exist.
@@ -232,6 +246,33 @@ invalid`, which is true — that is not legal XML — but says nothing about
     next attempt starts by finding nothing and reads as a broken Wine prefix.
     `WINEDEBUG=+msi,+file` is what shows the path it tried.
 
+### Running on the console
+
+17. **XAML wants its first Application access from the MTA.** `wWinMain` calls
+    `winrt::init_apartment()` — the multi-threaded default — before
+    `Application::Start`, and it is not a nicety: with no apartment, or with a
+    single-threaded one, the factory call inside `Start` throws
+    `winrt::hresult_wrong_thread`, nothing catches it, and the process dies in
+    `terminate -> abort` before any window exists. The activation manager
+    reports that as `0x8027025B`, which names nothing; the actual origination
+    message — "The Application Object must initially be accessed from the
+    multi-thread apartment" — surfaces only in a crash dump
+    (`/api/debug/dump/usermode/crashcontrol`, then read the dump). The same
+    source built by Visual Studio behaves identically; the difference is only
+    who wrote the entry point. Observed on Xbox OS 26100.8866.
+
+18. **`EncodePointer` lives in an apiset the app container does not have.**
+    xwin's `kernel32.lib` imports `EncodePointer`/`DecodePointer` from
+    `api-ms-win-core-util-l1-1-0.dll`; on the Xbox that apiset is absent, the
+    loader fails the launch, and the Device Portal reports `0x80070002` "file
+    not found" without saying which file. No application code is involved: the
+    static CRT reaches for the pair in its `/O2` initialisation paths, so the
+    same project can launch as a debug build and die as a release one. `--uwp`
+    links `include/appcontainer-pointers.def` (as an import library, generated
+    at build time) ahead of `kernel32.lib`, rerouting exactly those two names
+    to `KERNELBASE.dll`, which exports them and is present in every
+    app-container process.
+
 ## Layout
 
 ```
@@ -246,8 +287,10 @@ scripts/build-app.sh         all of the above: a project directory -> a layout
 scripts/read-vcxproj.py      a Visual Studio project -> what it builds, as JSON
 scripts/restore-nuget.sh     packages.config -> packages/, from nuget.org
 scripts/build-project.sh     a .vcxproj -> a layout, references and DLLs included
+scripts/run-on-device.sh     a layout -> the console: packed, signed, installed, launched
 scripts/common.sh            sourced by all of them: errors, downloads, layout rules
 include/msvc-compat.h        force-included: what clang needs that MSVC assumes
+include/appcontainer-pointers.def  EncodePointer/DecodePointer from KERNELBASE (n°18)
 Makefile                     install / uninstall / check
 packaging/PKGBUILD           Arch package
 packaging/publish-aur.sh     update and publish it, by hand or from CI
