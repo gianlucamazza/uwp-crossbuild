@@ -360,7 +360,7 @@ lacks "an Exclude is honoured" "generated.cpp" \
 	"$read_vcxproj" "$vcxproj" --field sources.cpp
 lacks "a .c file is not listed among the C++ ones" "one.c" \
 	"$read_vcxproj" "$vcxproj" --field sources.cpp
-# README, "Fourteen things", 1: C++/WinRT below C++20 reaches for
+# README's gotcha list, item 1: C++/WinRT below C++20 reaches for
 # <experimental/coroutine>, whose first line is an #error refusing clang.
 # 10.0.22621.0 is not a number, and MSBuild compares it as a version. A project
 # gates real settings on this, so getting it wrong changes what is compiled.
