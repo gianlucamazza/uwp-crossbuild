@@ -111,9 +111,12 @@ opaque `0x8D160120`, so the script refuses them up front.
   `UWP_TARGET=aarch64-pc-windows-msvc UWP_ARCH_DIR=aarch64` for the scripts
   below them — produces an `IMAGE_FILE_MACHINE_ARM64` image with the app-container
   bit, through the same midlrt/cppwinrt/makepri pipeline. Verified by reading
-  the PE header; per the first limit, no device has run it. Re-run
-  `fix-header-case.sh --canonical` after any re-splat: xwin rewrites the
-  cppwinrt headers and undoes the aliases.
+  the PE header; per the first limit, no device has run it. The manifest ships
+  verbatim and both front doors refuse one whose `ProcessorArchitecture`
+  disagrees with the platform — `examples/hello-uwp` declares `x64`, so its
+  ARM64 build starts by setting that attribute to `arm64`, exactly as the
+  refusal says. Re-run `fix-header-case.sh --canonical` after any re-splat:
+  xwin rewrites the cppwinrt headers and undoes the aliases.
 - **No `.xaml` files, ever.** The XAML compiler has no Linux equivalent and does
   not run under Wine. Build the UI in code, as `examples/hello-uwp` does.
 - **The PCH is ~190 MB** per project, in the object directory.
