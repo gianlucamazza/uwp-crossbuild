@@ -80,16 +80,16 @@ for src in "${sources[@]}"; do
 	[[ -f "$src" ]] || die "no such source file: $src
   (include directories go through -I DIR or --include DIR, with a space)"
 done
-[[ -d "$XWIN_ROOT/crt/include" ]] || die "no CRT at $XWIN_ROOT — run fetch-sdk.sh"
-command -v clang-cl >/dev/null || die "clang-cl not found"
-if [[ $static_lib -eq 1 ]]; then
-	command -v llvm-lib >/dev/null ||
-		die "llvm-lib not found — it ships with LLVM, beside clang-cl"
-	[[ $uwp -eq 0 ]] ||
-		die "--static-lib and --uwp are exclusive: /appcontainer is a property of
+# A contradiction in the arguments is answerable on any machine; it comes
+# before the checks for what is installed.
+[[ $static_lib -eq 0 || $uwp -eq 0 ]] ||
+	die "--static-lib and --uwp are exclusive: /appcontainer is a property of
   an image, and an archive is not one. The application that links this library
   is where --uwp belongs."
-fi
+[[ -d "$XWIN_ROOT/crt/include" ]] || die "no CRT at $XWIN_ROOT — run fetch-sdk.sh"
+command -v clang-cl >/dev/null || die "clang-cl not found"
+[[ $static_lib -eq 0 ]] || command -v llvm-lib >/dev/null ||
+	die "llvm-lib not found — it ships with LLVM, beside clang-cl"
 
 # Force-included before everything: the two adjustments a source tree written
 # for MSVC needs in order to compile with clang unchanged. See the header.

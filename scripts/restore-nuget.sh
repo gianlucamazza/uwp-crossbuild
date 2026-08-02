@@ -45,8 +45,6 @@ done
 
 [[ -n "$project" || -n "$config" ]] || die "--project or --config is required"
 [[ -z "$project" || -z "$config" ]] || die "--project and --config are exclusive"
-command -v curl >/dev/null || die "curl is required"
-command -v 7z >/dev/null || die "7z (p7zip) is required"
 
 # The package list. From the project it comes through read-vcxproj.py, which
 # already knows both places a project can declare one; from a packages.config it
@@ -89,6 +87,12 @@ list=()
 	echo "no packages declared — nothing to restore"
 	exit 0
 }
+
+# Checked here, not with the arguments: everything above is reading input and
+# can answer — including "nothing to restore" — on a machine that has neither
+# tool. What follows is the part that needs them.
+command -v curl >/dev/null || die "curl is required"
+command -v 7z >/dev/null || die "7z (p7zip) is required"
 
 mkdir -p "$packages"
 packages="$(cd "$packages" && pwd)"
