@@ -51,9 +51,21 @@ rm -f "$layout/resources.pri"
 	/Overwrite >/dev/null
 
 [[ -f "$layout/resources.pri" ]] || die "makepri produced no resources.pri"
-# makepri can exit 0 having written an empty file when the indexer finds nothing
-# it recognises. Nothing here can validate the contents — that needs the loader
-# on a device — but an empty .pri is certainly wrong, and it installs.
-size="$(stat -c%s "$layout/resources.pri")"
-[[ $size -gt 0 ]] || die "makepri wrote an empty resources.pri from $layout"
-printf 'resources.pri: %s bytes\n' "$size"
+# makepri can exit 0 having written a file the loader will not load. Whether the
+# *contents* are right needs the loader on a device, but the PRI container
+# frames itself, so a truncated or empty file is detectable here: "mrm_pri2" in
+# the first 8 bytes, the total file size as a little-endian uint32 at offset
+# 0xc, and the magic again in the last 8 (observed on SDK 10.0.22621 output).
+pri="$layout/resources.pri"
+size="$(stat -c%s "$pri")"
+# Compared as hex, not as strings: the surrounding bytes are binary, and bash
+# command substitution drops NUL bytes with a warning.
+magic="6d726d5f70726932" # "mrm_pri2"
+[[ $size -ge 16 &&
+	"$(head -c 8 "$pri" | od -A n -t x1 | tr -d ' \n')" == "$magic" &&
+	"$(tail -c 8 "$pri" | od -A n -t x1 | tr -d ' \n')" == "$magic" ]] ||
+	die "resources.pri is not a PRI container (no mrm_pri2 magic) — makepri wrote $size bytes from $layout"
+declared="$(od -A n -t u4 -j 12 -N 4 "$pri" | tr -d ' ')"
+[[ "$declared" == "$size" ]] ||
+	die "resources.pri is truncated: header declares $declared bytes, file has $size"
+printf 'resources.pri: %s bytes, container intact\n' "$size"
