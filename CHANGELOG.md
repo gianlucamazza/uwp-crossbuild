@@ -11,6 +11,12 @@ a specific version, and knowing which is the whole point of writing it down.
 
 ### Added
 
+- **`build-app.sh` takes `--platform x64|ARM64`**, like `build-project.sh`
+  already did. The platform table — which values can be built, what
+  `UWP_TARGET`/`UWP_ARCH_DIR` each means — moves to `common.sh` so the two
+  front doors cannot disagree about it; explicit values in the environment
+  still win, and a third architecture is one row there plus the dlltool
+  machine case in `build.sh`.
 - **A manifest whose `ProcessorArchitecture` is not the platform's is refused.**
   The manifest is copied into the layout verbatim, so a `--platform ARM64`
   build of an x64 manifest would ship its ARM64 executable under an identity

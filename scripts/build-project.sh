@@ -73,14 +73,7 @@ done
 # parent would slip a project past them and under prepare_layout's clearing.
 project="$(cd "$(dirname "$project")" && pwd -P)/$(basename "$project")"
 
-# The platform names both halves of the build: the conditions the evaluator
-# takes and the target build.sh compiles for. An explicit UWP_TARGET/
-# UWP_ARCH_DIR in the environment still wins, as everywhere else.
-case "$platform" in
-x64) export UWP_TARGET="${UWP_TARGET:-x86_64-pc-windows-msvc}" UWP_ARCH_DIR="${UWP_ARCH_DIR:-x86_64}" ;;
-ARM64) export UWP_TARGET="${UWP_TARGET:-aarch64-pc-windows-msvc}" UWP_ARCH_DIR="${UWP_ARCH_DIR:-aarch64}" ;;
-*) die "--platform $platform is not one this can build: x64 or ARM64" ;;
-esac
+platform_env "$platform"
 
 read_vcxproj=("$here/read-vcxproj.py" --config "$config" --platform "$platform"
 	${properties[@]+"${properties[@]}"})

@@ -87,7 +87,10 @@ A native NuGet package is an ordinary zip. `packages.config` or
 `PackageReference` says which ones and at which versions; they land in
 `packages/<Id>.<Version>/`, the directory Visual Studio would create and the one
 the project's own `<Import>` lines name. Headers live under
-`build/native/include`, import libraries and DLLs under `runtimes/win-x64/native`.
+`build/native/include`, import libraries and DLLs under
+`runtimes/win-x64/native` — `runtimes/win-arm64/native` is the ARM64 spelling,
+and it is the project's own `$(Platform)` conditions that select between them,
+not anything hardcoded here.
 
 Until this has run, a project's `.props` imports resolve to nothing and its
 include paths point at absent directories — which is why `build-project.sh`
@@ -155,6 +158,9 @@ the shorter road for that shape:
 uwp-build-app --project uwp --out /tmp/layout \
   --copy pkg/runtimes/win-x64/native
 ```
+
+Both front doors take `--platform x64|ARM64`; for an ARM64 build, `--copy` the
+`runtimes/win-arm64/native` directory instead.
 
 Either way [openappx](https://github.com/gianlucamazza/openappx) takes over from
 the finished layout (executable, winmd, assets, the copied DLLs,

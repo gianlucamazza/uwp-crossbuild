@@ -2,12 +2,16 @@
 # build-app.sh — an example directory in, a package layout out.
 #
 #   build-app.sh --project examples/hello-uwp --out /tmp/hello-layout \
-#                [--name NAME] [--copy DIR] [--jobs N] [--language TAG] [--no-pri]
+#                [--platform x64|ARM64] [--name NAME] [--copy DIR] [--jobs N] \
+#                [--language TAG] [--no-pri]
 #
+#     --platform   what to compile for (default x64). Sets UWP_TARGET and
+#                  UWP_ARCH_DIR; explicit values in the environment still win.
 #     --copy DIR   copy the contents of DIR into the layout (repeatable). This
 #                  is how precompiled third-party DLLs get into the package: a
-#                  native NuGet package's runtimes/win-x64/native, say. They are
-#                  already built for Windows, which is the reason for using them.
+#                  native NuGet package's runtimes/win-x64/native — or its
+#                  win-arm64 sibling — say. They are already built for Windows,
+#                  which is the reason for using them.
 #     --no-pri     skip resources.pri, which is not needed to install
 #     --name NAME  override the executable and namespace name
 #     --jobs N     passed through to build.sh, which owns the default (nproc)
@@ -40,11 +44,13 @@ no_pri=0
 copy_dirs=()
 language=""
 jobs=""
+platform="x64"
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
 	--project) value "$1" $# "${2:-}" && project="$2" && shift 2 ;;
+	--platform) value "$1" $# "${2:-}" && platform="$2" && shift 2 ;;
 	--out) value "$1" $# "${2:-}" && out="$2" && shift 2 ;;
 	--name) value "$1" $# "${2:-}" && name="$2" && shift 2 ;;
 	--copy) value "$1" $# "${2:-}" && copy_dirs+=("$2") && shift 2 ;;
@@ -63,6 +69,20 @@ project="$(cd "$project" && pwd -P)"
 for dir in ${copy_dirs[@]+"${copy_dirs[@]}"}; do
 	[[ -d "$dir" ]] || die "--copy: no such directory: $dir"
 done
+
+platform_env "$platform"
+
+# The manifest is copied into the layout verbatim, so its architecture has to
+# agree with the platform — same refusal read-vcxproj.py makes for a .vcxproj,
+# mirrored here for a project directory. neutral and absent stay legal.
+case "$platform" in x64) expected="x64" ;; ARM64) expected="arm64" ;; esac
+declared=$(sed -n 's/.*ProcessorArchitecture="\([^"]*\)".*/\1/p' \
+	"$project/AppxManifest.xml" | head -1)
+if [[ -n "$declared" && "${declared,,}" != neutral && "${declared,,}" != "$expected" ]]; then
+	die "AppxManifest.xml declares ProcessorArchitecture=\"$declared\", and this
+  is an $expected build. Set the manifest's Identity/@ProcessorArchitecture to
+  \"$expected\", or build with the platform the manifest names."
+fi
 
 if [[ -z "$name" ]]; then
 	name=$(sed -n 's/.*Executable="\([^"]*\)\.exe".*/\1/p' "$project/AppxManifest.xml" | head -1)
