@@ -129,13 +129,21 @@ assert "acronyms stay upper-case" "no Windows.AI.MachineLearning.h" \
 assert "the alias points at the real file" "wrong link target" \
 	is_link_to "$tmp/Windows.AI.MachineLearning.h" windows.ai.machinelearning.h
 
-# A wrong alias from an earlier version of this script must not survive.
+# A wrong alias from an earlier version of this script must not survive — but
+# only aliases of this mode's own shape are its to delete: --lower's
+# all-lowercase ones and a user's symlink to elsewhere both stay.
 ln -s windows.ai.machinelearning.h "$tmp/Windows.Ai.Machinelearning.h"
+ln -s windows.foundation.h "$tmp/lowercase.alias.h"
+ln -s /etc/hostname "$tmp/My.Own.Header.h"
 "$scripts/fix-header-case.sh" "$tmp" --canonical >/dev/null
 assert "a stale alias is removed" "Windows.Ai.Machinelearning.h survived" \
 	test ! -e "$tmp/Windows.Ai.Machinelearning.h"
 assert "rerunning is idempotent" "the correct alias did not come back" \
 	test -L "$tmp/Windows.AI.MachineLearning.h"
+assert "an all-lowercase alias survives --canonical" "lowercase.alias.h was deleted" \
+	test -L "$tmp/lowercase.alias.h"
+assert "a symlink to elsewhere survives --canonical" "My.Own.Header.h was deleted" \
+	test -L "$tmp/My.Own.Header.h"
 rm -rf "$tmp"
 
 echo "fix-header-case.sh --lower"
@@ -223,7 +231,53 @@ assert "the untouched directory kept its contents" "the file was deleted" \
 fails_with "--copy checks its directory before building" "no such directory" \
 	"$scripts/build-app.sh" --project "$tmp" --out "$elsewhere/layout" \
 	--copy /nonexistent-dlls
-rm -rf "$tmp" "$elsewhere"
+# `--out --uwp` would otherwise write the layout to a directory literally
+# named --uwp, deferring the failure to whatever reads it next.
+fails_with "a flag given another flag as its value is refused" "not another flag" \
+	"$scripts/build-app.sh" --project "$tmp" --out --uwp
+fails_with "a flag with no value is reported by name" "--language needs a value" \
+	"$scripts/build-app.sh" --language
+# The reverse containment: clearing a stale layout is recursive, so a project
+# under --out would be deleted with it — sources and all.
+nested="$(mktemp -d)"
+cp "$tmp/AppxManifest.xml" "$nested/"
+mkdir "$nested/src"
+touch "$nested/src/app.idl"
+cp "$tmp/AppxManifest.xml" "$nested/src/"
+fails_with "--project inside --out is refused" "must not live under --out" \
+	"$scripts/build-app.sh" --project "$nested/src" --out "$nested"
+assert "the nested project kept its sources" "app.idl was deleted" \
+	test -f "$nested/src/app.idl"
+rm -rf "$nested"
+# Symlinks must not defeat the guards: the comparisons are on physical paths,
+# or a layout reached through a link deletes the project inside the real one.
+sym="$(mktemp -d)"
+mkdir -p "$sym/data/layout/proj"
+cp "$tmp/AppxManifest.xml" "$sym/data/layout/"
+touch "$sym/data/layout/proj/app.idl"
+cp "$tmp/AppxManifest.xml" "$sym/data/layout/proj/"
+ln -s data "$sym/slink"
+fails_with "a symlinked --out cannot hide the project inside it" "must not live under --out" \
+	"$scripts/build-app.sh" --project "$sym/data/layout/proj" --out "$sym/slink/layout"
+assert "the project behind the symlink kept its sources" "app.idl was deleted" \
+	test -f "$sym/data/layout/proj/app.idl"
+rm -rf "$sym" "$tmp" "$elsewhere"
+
+echo "wine-tool.sh guards"
+# The tool is there but the contracts are not: midlrt would otherwise run with
+# zero /reference arguments and fail much later on unresolved metadata.
+tmp="$(mktemp -d)"
+mkdir -p "$tmp/Windows Kits/10/bin/10.0.22621.0/x64"
+touch "$tmp/Windows Kits/10/bin/10.0.22621.0/x64/midlrt.exe"
+if ! command -v wine >/dev/null; then
+	skip "midlrt without contract winmds names the References directory" \
+		"wine is not installed"
+else
+	fails_with "midlrt without contract winmds names the References directory" \
+		"no contract .winmd" \
+		env UWP_SDK_ROOT="$tmp" "$scripts/wine-tool.sh" midlrt /?
+fi
+rm -rf "$tmp"
 
 echo "gen-projection.sh and gen-resources.sh guards"
 fails_with "gen-projection needs its arguments" "are required" "$scripts/gen-projection.sh"

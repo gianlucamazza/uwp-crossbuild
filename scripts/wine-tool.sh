@@ -72,11 +72,19 @@ run_midlrt() {
 		/I "$(win "$INCLUDE/shared")"
 		/I "$(win "$INCLUDE/um")"
 	)
-	local f
+	# An unmatched glob would fall through the -f check and midlrt would run
+	# with no /reference at all, failing much later on unresolved metadata that
+	# names neither this directory nor UWP_SDK_VERSION. Count what matched.
+	local f refs=0
 	for f in "$REFERENCES"/Windows.Foundation.FoundationContract/*/*.winmd \
 		"$REFERENCES"/Windows.Foundation.UniversalApiContract/*/*.winmd; do
-		[[ -f "$f" ]] && args+=(/reference "$(win "$f")")
+		[[ -f "$f" ]] || continue
+		args+=(/reference "$(win "$f")")
+		refs=$((refs + 1))
 	done
+	[[ $refs -gt 0 ]] || die "no contract .winmd under $REFERENCES
+  Run scripts/fetch-sdk.sh, or set UWP_SDK_VERSION to the SDK you have
+  (present: $(cd "$KITS/References" 2>/dev/null && echo *))."
 	WINEDEBUG="${WINEDEBUG:--all}" exec wine "$BIN_X64/midlrt.exe" "${args[@]}" "$@"
 }
 
@@ -88,7 +96,9 @@ run_makepri() {
 }
 
 run_cppwinrt() {
-	local exe="${CPPWINRT_EXE:-$SDK_ROOT/cppwinrt/bin/cppwinrt.exe}"
+	# UWP_CPPWINRT_EXE, prefixed like every other override here; CPPWINRT_EXE,
+	# its original name, still works.
+	local exe="${UWP_CPPWINRT_EXE:-${CPPWINRT_EXE:-$SDK_ROOT/cppwinrt/bin/cppwinrt.exe}}"
 	[[ -f "$exe" ]] || die "cppwinrt.exe not found at $exe — run fetch-sdk.sh"
 	WINEDEBUG="${WINEDEBUG:--all}" exec wine "$exe" "$@"
 }

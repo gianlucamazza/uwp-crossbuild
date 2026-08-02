@@ -38,9 +38,9 @@ launch=1
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
-	--layout) value "$1" $# && layout="$2" && shift 2 ;;
-	--package) value "$1" $# && package="$2" && shift 2 ;;
-	--pfx) value "$1" $# && pfx="$2" && shift 2 ;;
+	--layout) value "$1" $# "${2:-}" && layout="$2" && shift 2 ;;
+	--package) value "$1" $# "${2:-}" && package="$2" && shift 2 ;;
+	--pfx) value "$1" $# "${2:-}" && pfx="$2" && shift 2 ;;
 	--no-launch) launch=0 && shift ;;
 	*) die "unknown argument $1" ;;
 	esac

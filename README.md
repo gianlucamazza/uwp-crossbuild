@@ -143,6 +143,32 @@ Nothing from Microsoft is redistributed: both `fetch-sdk.sh` and `xwin` download
 from Microsoft's CDN at run time under the SDK licence. CI must re-run them
 rather than cache the result in an artefact store.
 
+## Environment
+
+Every location, version and target the scripts assume can be overridden:
+
+| Variable                   | Default                                   | What it changes                                               |
+| -------------------------- | ----------------------------------------- | ------------------------------------------------------------- |
+| `UWP_XWIN_ROOT`            | `~/.cache/uwp-crossbuild/xwin`            | where `xwin splat` put the CRT and SDK headers and libraries  |
+| `UWP_SDK_ROOT`             | `~/.cache/uwp-crossbuild/sdk`             | where `fetch-sdk.sh` extracts the SDK tools and metadata      |
+| `UWP_SDK_WORK`             | `~/.cache/uwp-crossbuild/work`            | the installer download and layout cache                       |
+| `UWP_SDK_VERSION`          | `10.0.22621.0`                            | the version directory the tools and metadata live under       |
+| `UWP_SDK_URL`              | Microsoft's fwlink for that SDK           | the web installer `fetch-sdk.sh` downloads                    |
+| `UWP_CPPWINRT_VERSION`     | read from xwin's `base.h`                 | the cppwinrt.exe pin — must match the `winrt/` headers (n°13) |
+| `UWP_CPPWINRT_EXE`         | `$UWP_SDK_ROOT/cppwinrt/bin/…`            | the cppwinrt.exe Wine runs (`CPPWINRT_EXE` still works)       |
+| `UWP_TARGET`               | `x86_64-pc-windows-msvc`                  | clang's `-target`; `build-project.sh --platform` sets it      |
+| `UWP_ARCH_DIR`             | `x86_64`                                  | the architecture subdirectory of the CRT and SDK libraries    |
+| `UWP_CXX_STD`              | `c++20`                                   | `/std:` for C++ — c++17 cannot work (n°1)                     |
+| `UWP_C_STD`                | `c17`                                     | `/std:` for `.c` sources                                      |
+| `UWP_OBJ_DIR`              | `<out>.objs` (`<out>.build` for a layout) | objects, PCH and generated files                              |
+| `UWP_NUGET_FEED`           | `https://www.nuget.org/api/v2/package`    | where `restore-nuget.sh` downloads from                       |
+| `UWP_DEVICE_ENV`           | `~/.config/uwp-crossbuild/device-env`     | the file `run-on-device.sh` sources for the device variables  |
+| `UWP_DEVICE_URL` / `_USER` | from that file                            | the Device Portal, as in Dev Home → Remote Access             |
+| `UWP_DEVICE_PFX`           | `~/.config/uwp-crossbuild/dev.pfx`        | the signing certificate; subject must equal the Publisher     |
+
+`OPENAPPX_DEVICE_PASSWORD` belongs to openappx and completes the device trio;
+`wine-tool.sh` also honours `WINEDEBUG`, defaulting it to `-all`.
+
 ## Eighteen things that will waste your afternoon
 
 Every one of these fails while pointing somewhere else. The scripts handle them;

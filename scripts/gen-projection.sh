@@ -33,10 +33,10 @@ stubs=""
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
-	--idl) value "$1" $# && idl="$2" && shift 2 ;;
-	--name) value "$1" $# && name="$2" && shift 2 ;;
-	--out) value "$1" $# && out="$2" && shift 2 ;;
-	--stubs) value "$1" $# && stubs="$2" && shift 2 ;;
+	--idl) value "$1" $# "${2:-}" && idl="$2" && shift 2 ;;
+	--name) value "$1" $# "${2:-}" && name="$2" && shift 2 ;;
+	--out) value "$1" $# "${2:-}" && out="$2" && shift 2 ;;
+	--stubs) value "$1" $# "${2:-}" && stubs="$2" && shift 2 ;;
 	*) die "unknown argument $1" ;;
 	esac
 done
@@ -47,7 +47,11 @@ done
 
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
+# Absolute before the cd below: a relative --stubs would otherwise be resolved
+# against $out and land at <out>/<stubs> instead of where it was asked for.
 stubs="${stubs:-$out/stubs}"
+mkdir -p "$stubs"
+stubs="$(cd "$stubs" && pwd)"
 idl="$(cd "$(dirname "$idl")" && pwd)/$(basename "$idl")"
 
 # Wine truncates a path past MAX_PATH without saying so: midlrt then reports the
@@ -66,7 +70,6 @@ cd "$out"
 # -component is what emits App.g.h and module.g.cpp; without it cppwinrt only
 # writes the projection headers. Its argument is where the starter App.h/App.cpp
 # go, and they default out of the way because they would shadow real sources.
-mkdir -p "$stubs"
 "$here/wine-tool.sh" cppwinrt \
 	-input "$name.winmd" -reference "$(winepath -w "$UNION")" \
 	-output . -component "$(winepath -w "$stubs")" -prefix

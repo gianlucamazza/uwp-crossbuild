@@ -2,7 +2,7 @@
 # build-app.sh — an example directory in, a package layout out.
 #
 #   build-app.sh --project examples/hello-uwp --out /tmp/hello-layout \
-#                [--name NAME] [--copy DIR] [--no-pri]
+#                [--name NAME] [--copy DIR] [--jobs N] [--language TAG] [--no-pri]
 #
 #     --copy DIR   copy the contents of DIR into the layout (repeatable). This
 #                  is how precompiled third-party DLLs get into the package: a
@@ -10,6 +10,10 @@
 #                  already built for Windows, which is the reason for using them.
 #     --no-pri     skip resources.pri, which is not needed to install
 #     --name NAME  override the executable and namespace name
+#     --jobs N     passed through to build.sh, which owns the default (nproc)
+#     --language   passed through to gen-resources.sh (default there: en-US); a
+#                  manifest declaring another resource language otherwise gets
+#                  an en-US pri without a word
 #     --help       this text
 #
 # Drives the whole chain: midlrt and cppwinrt under Wine for the metadata and the
@@ -34,14 +38,18 @@ out=""
 name=""
 no_pri=0
 copy_dirs=()
+language=""
+jobs=""
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
-	--project) value "$1" $# && project="$2" && shift 2 ;;
-	--out) value "$1" $# && out="$2" && shift 2 ;;
-	--name) value "$1" $# && name="$2" && shift 2 ;;
-	--copy) value "$1" $# && copy_dirs+=("$2") && shift 2 ;;
+	--project) value "$1" $# "${2:-}" && project="$2" && shift 2 ;;
+	--out) value "$1" $# "${2:-}" && out="$2" && shift 2 ;;
+	--name) value "$1" $# "${2:-}" && name="$2" && shift 2 ;;
+	--copy) value "$1" $# "${2:-}" && copy_dirs+=("$2") && shift 2 ;;
+	--jobs) value "$1" $# "${2:-}" && jobs="$2" && shift 2 ;;
+	--language) value "$1" $# "${2:-}" && language="$2" && shift 2 ;;
 	--no-pri) no_pri=1 && shift ;;
 	*) die "unknown argument $1" ;;
 	esac
@@ -50,7 +58,7 @@ done
 [[ -n "$project" && -n "$out" ]] || die "--project and --out are required"
 [[ -f "$project/app.idl" ]] || die "no app.idl in $project"
 [[ -f "$project/AppxManifest.xml" ]] || die "no AppxManifest.xml in $project"
-project="$(cd "$project" && pwd)"
+project="$(cd "$project" && pwd -P)"
 # Checked now rather than after a ten-minute compile.
 for dir in ${copy_dirs[@]+"${copy_dirs[@]}"}; do
 	[[ -d "$dir" ]] || die "--copy: no such directory: $dir"
@@ -61,10 +69,18 @@ if [[ -z "$name" ]]; then
 	[[ -n "$name" ]] || die "cannot read Executable from the manifest; pass --name"
 fi
 
-mkdir -p "$out"
-out="$(cd "$out" && pwd)"
+# Physical paths (pwd -P above, readlink -m here): the guards are string
+# comparisons, and a symlinked parent in either argument would slip a project
+# past them and under prepare_layout's recursive clearing. Checked before the
+# mkdir, so a refused --out leaves no directory behind either.
+out="$(readlink -m "$out")"
 [[ "$out" != "$project" && "$out" != "$project"/* ]] ||
 	die "--out must be outside --project: the layout is a build product, not a source"
+# The reverse as well: clearing a stale layout is recursive, so a project
+# living under --out would be deleted with it, sources and all.
+[[ "$project" != "$out"/* ]] ||
+	die "--project must not live under --out: clearing a stale layout would delete it"
+mkdir -p "$out"
 
 prepare_layout "$out" "$name.exe"
 
@@ -90,6 +106,7 @@ for f in "$project"/*.cpp "$project"/*.c; do [[ -f "$f" ]] && sources+=("$f"); d
 # ~1 s per translation unit.
 build_args=(--uwp --out "$out/$name.exe")
 [[ -f "$project/pch.h" ]] && build_args+=(--pch "$project/pch.h")
+[[ -n "$jobs" ]] && build_args+=(--jobs "$jobs")
 UWP_OBJ_DIR="$build/obj" \
 	"$here/build.sh" "${build_args[@]}" "${sources[@]}" -- /I"$gen" /I"$project"
 
@@ -108,7 +125,9 @@ done
 
 if [[ $no_pri -eq 0 ]]; then
 	step "Resources"
-	"$here/gen-resources.sh" --layout "$out"
+	pri_args=(--layout "$out")
+	[[ -n "$language" ]] && pri_args+=(--language "$language")
+	"$here/gen-resources.sh" "${pri_args[@]}"
 fi
 
 step "Layout ready: $out"

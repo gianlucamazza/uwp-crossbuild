@@ -30,7 +30,7 @@ push=1
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
-	--version) value "$1" $# && version="$2" && shift 2 ;;
+	--version) value "$1" $# "${2:-}" && version="$2" && shift 2 ;;
 	--dry-run) dry_run=1 && shift ;;
 	--no-push) push=0 && shift ;;
 	*) die "unknown argument $1" ;;

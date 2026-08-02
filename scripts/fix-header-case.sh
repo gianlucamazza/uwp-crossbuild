@@ -57,13 +57,23 @@ NAMESPACE = re.compile(rb"^WINRT_EXPORT namespace winrt::([A-Za-z0-9_:]+)", re.M
 
 directory = pathlib.Path(sys.argv[1])
 
-# Idempotent: the symlinks in here are ours (xwin ships plain files), so drop
-# them before rebuilding, or a wrong alias from an earlier run would survive.
+# Idempotent: drop our own aliases before rebuilding, or a wrong one from an
+# earlier run would survive. "Ours" is decided by shape, not assumed of every
+# symlink in the directory: a link this mode creates has a mixed-case name and
+# a bare in-directory target that is a case-variant of that name. --lower's
+# all-lowercase aliases and anything a user linked in from elsewhere would
+# otherwise be deleted with the stale ones.
 removed = 0
 for path in sorted(directory.iterdir()):
-    if path.is_symlink():
-        path.unlink()
-        removed += 1
+    if not path.is_symlink():
+        continue
+    target = os.readlink(str(path))
+    if "/" in target:
+        continue
+    if path.name == path.name.lower() or target.lower() != path.name.lower():
+        continue
+    path.unlink()
+    removed += 1
 
 created = 0
 for path in sorted(directory.iterdir()):

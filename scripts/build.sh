@@ -54,13 +54,13 @@ include_dirs=()
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
-	--out) value "$1" $# && out="$2" && shift 2 ;;
-	--pch) value "$1" $# && pch="$2" && shift 2 ;;
-	--jobs) value "$1" $# && jobs="$2" && shift 2 ;;
+	--out) value "$1" $# "${2:-}" && out="$2" && shift 2 ;;
+	--pch) value "$1" $# "${2:-}" && pch="$2" && shift 2 ;;
+	--jobs) value "$1" $# "${2:-}" && jobs="$2" && shift 2 ;;
 	--uwp) uwp=1 && shift ;;
 	--static-lib) static_lib=1 && shift ;;
-	-I | --include) value "$1" $# && include_dirs+=("/I$2") && shift 2 ;;
-	--link-arg) value "$1" $# && link_args+=("$2") && shift 2 ;;
+	-I | --include) value "$1" $# "${2:-}" && include_dirs+=("/I$2") && shift 2 ;;
+	--link-arg) value "$1" $# "${2:-}" && link_args+=("$2") && shift 2 ;;
 	--)
 		shift
 		extra=("$@")
@@ -192,7 +192,7 @@ if [[ -n "$pch" ]]; then
 	if [[ ! -f "$pchfile" || "$pch" -nt "$pchfile" ]]; then
 		echo "  precompiling $(basename "$pch")"
 		printf '#include "%s"\n' "$(basename "$pch")" >"$objdir/pch.cpp"
-		clang-cl "${common[@]}" "${cxx[@]}" "${extra[@]}" /c "$objdir/pch.cpp" \
+		clang-cl "${common[@]}" "${cxx[@]}" ${extra[@]+"${extra[@]}"} /c "$objdir/pch.cpp" \
 			"/Yc$(basename "$pch")" "/Fp$pchfile" "/Fo$objdir/pch.obj" \
 			"/I$(cd "$(dirname "$pch")" && pwd)"
 	fi
@@ -210,17 +210,21 @@ wait_all() { # wait_all <pid...>
 objects=()
 pids=()
 for src in "${sources[@]}"; do
-	# Named after the whole path, not the basename: src/util.cpp and
-	# vendor/util.cpp would otherwise compile to the same object, in parallel,
-	# and the link would take whichever finished last without a word.
+	# Named after the whole path plus a checksum of it. The path alone, with
+	# `/` flattened to `_`, is not injective: src/util.cpp and src_util.cpp
+	# would meet in one object, in parallel, and the link would take whichever
+	# finished last without a word; a source named pch.cpp would collide with
+	# the PCH's own object the same way. The checksum keeps the readable name
+	# and settles the ties.
 	flat="${src%.*}"
 	flat="${flat#./}"
-	obj="$objdir/${flat//\//_}.obj"
+	crc=$(printf %s "$src" | cksum)
+	obj="$objdir/${flat//\//_}.${crc%% *}.obj"
 	objects+=("$obj")
 	# A C source takes neither the C++ standard nor the C++ precompiled header.
-	lang=("${cxx[@]}" "${pch_args[@]}")
+	lang=("${cxx[@]}" ${pch_args[@]+"${pch_args[@]}"})
 	[[ "$src" == *.c ]] && lang=("/std:$C_STD")
-	clang-cl "${common[@]}" "${lang[@]}" "${extra[@]}" /c "$src" -o "$obj" &
+	clang-cl "${common[@]}" "${lang[@]}" ${extra[@]+"${extra[@]}"} /c "$src" -o "$obj" &
 	pids+=($!)
 	# A plain `wait -n` loop would be neater but needs bash 4.3+ semantics that
 	# differ across the versions in the wild; batching is enough here.
@@ -240,4 +244,4 @@ if [[ $static_lib -eq 1 ]]; then
 fi
 
 exec clang-cl -target "$TARGET" "${objects[@]}" -o "$out" \
-	-fuse-ld=lld-link -link "${libs[@]}" "${link_args[@]}"
+	-fuse-ld=lld-link -link "${libs[@]}" ${link_args[@]+"${link_args[@]}"}

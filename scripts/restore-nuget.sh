@@ -36,9 +36,9 @@ packages=""
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
-	--project) value "$1" $# && project="$2" && shift 2 ;;
-	--config) value "$1" $# && config="$2" && shift 2 ;;
-	--packages) value "$1" $# && packages="$2" && shift 2 ;;
+	--project) value "$1" $# "${2:-}" && project="$2" && shift 2 ;;
+	--config) value "$1" $# "${2:-}" && config="$2" && shift 2 ;;
+	--packages) value "$1" $# "${2:-}" && packages="$2" && shift 2 ;;
 	*) die "unknown argument $1" ;;
 	esac
 done

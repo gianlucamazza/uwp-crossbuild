@@ -32,6 +32,29 @@ double underscore, a missing `package` parameter), a missing
 
 ### Fixed
 
+- **Harvested from PR #3**, a parallel review that had drifted eighteen
+  releases behind main; re-derived against the current tree rather than
+  merged, each with its test:
+  - a value that is itself a flag is refused by every parser (`--out --uwp`
+    wrote an executable named `--uwp`, without the app container);
+  - the layout-clearing guards compare physical paths, in both directions —
+    a project under `--out`, or reached through a symlinked parent, was
+    deleted with the stale layout, sources and all;
+  - object names carry a checksum of the source path (`src/util.cpp` and
+    `src_util.cpp` met in one object, and a source named `pch.cpp` collided
+    with the PCH's own);
+  - `fix-header-case.sh --canonical` deletes only aliases of its own shape,
+    not `--lower`'s nor a user's own symlinks;
+  - a relative `gen-projection.sh --stubs` is resolved before the cd into
+    `--out`; midlrt with no contract winmds dies naming the References
+    directory instead of failing later on unresolved metadata;
+  - `build-app.sh --jobs` and `--language` pass through to the tools that own
+    them; `UWP_CPPWINRT_EXE` joins the prefix (`CPPWINRT_EXE` still works);
+  - `make install`/`uninstall` quote every path, arrays that can be empty are
+    expanded the way bash before 4.4 accepts, and the README gained an
+    Environment table for every `UWP_*` override.
+
+
 - **`examples/hello-uwp` initialises the MTA before `Application::Start`.**
   XAML requires the first access to the Application object to come from the
   multi-threaded apartment; without it the factory call throws

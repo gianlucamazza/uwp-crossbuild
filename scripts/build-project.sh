@@ -49,11 +49,11 @@ no_restore=0
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
-	--project) value "$1" $# && project="$2" && shift 2 ;;
-	--out) value "$1" $# && out="$2" && shift 2 ;;
-	--config) value "$1" $# && config="$2" && shift 2 ;;
-	--platform) value "$1" $# && platform="$2" && shift 2 ;;
-	--property) value "$1" $# && properties+=(--property "$2") && shift 2 ;;
+	--project) value "$1" $# "${2:-}" && project="$2" && shift 2 ;;
+	--out) value "$1" $# "${2:-}" && out="$2" && shift 2 ;;
+	--config) value "$1" $# "${2:-}" && config="$2" && shift 2 ;;
+	--platform) value "$1" $# "${2:-}" && platform="$2" && shift 2 ;;
+	--property) value "$1" $# "${2:-}" && properties+=(--property "$2") && shift 2 ;;
 	--no-pri) no_pri=1 && shift ;;
 	--no-restore) no_restore=1 && shift ;;
 	*) die "unknown argument $1" ;;
@@ -69,7 +69,9 @@ done
 [[ "$project" == *.vcxproj ]] ||
 	die "not a .vcxproj: $project
   For a project directory in the shape of examples/hello-uwp, use build-app.sh."
-project="$(cd "$(dirname "$project")" && pwd)/$(basename "$project")"
+# Physical (-P): the guards below are string comparisons, and a symlinked
+# parent would slip a project past them and under prepare_layout's clearing.
+project="$(cd "$(dirname "$project")" && pwd -P)/$(basename "$project")"
 
 # The platform names both halves of the build: the conditions the evaluator
 # takes and the target build.sh compiles for. An explicit UWP_TARGET/
@@ -115,11 +117,18 @@ read_field() { # read_field <array name> <project> <dotted path>
 	[[ -z "$text" ]] || mapfile -t destination <<<"$text"
 }
 
-mkdir -p "$out"
-out="$(cd "$out" && pwd)"
-[[ "$out" != "$(dirname "$project")"* ]] ||
+# readlink -m before the mkdir: a refused --out leaves no directory behind,
+# and the comparisons below see physical paths. Anchored with the trailing
+# slash — a plain prefix test would also refuse /tmp/app-layout beside
+# /tmp/app, which contains nothing of the project's.
+directory="$(dirname "$project")"
+out="$(readlink -m "$out")"
+[[ "$out" != "$directory" && "$out" != "$directory"/* ]] ||
 	die "--out must be outside the project directory: the layout is a build
   product, and everything in it ships inside the package."
+[[ "$directory" != "$out"/* ]] ||
+	die "--project must not live under --out: clearing a stale layout would delete it"
+mkdir -p "$out"
 
 type="$(field "$project" type)"
 [[ "$type" == "Application" ]] ||

@@ -22,8 +22,8 @@ language="en-US"
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
-	--layout) value "$1" $# && layout="$2" && shift 2 ;;
-	--language) value "$1" $# && language="$2" && shift 2 ;;
+	--layout) value "$1" $# "${2:-}" && layout="$2" && shift 2 ;;
+	--language) value "$1" $# "${2:-}" && language="$2" && shift 2 ;;
 	*) die "unknown argument $1" ;;
 	esac
 done
