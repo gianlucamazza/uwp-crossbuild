@@ -43,8 +43,11 @@ script wrapped around each. That framing decides most questions:
   SDK cache, so it exercises the download too.
 - **Four versions are pinned by hand**, because dependabot watches the actions
   and nothing else: `XWIN_VERSION` and `SHFMT_VERSION` in `ci.yml`,
-  `UWP_SDK_VERSION` with its installer URL in `fetch-sdk.sh`, and
-  `CPPWINRT_FALLBACK` — used only when xwin's headers are not there to be read.
+  `UWP_SDK_VERSION_DEFAULT` in `common.sh` — one copy, because `fetch-sdk.sh`
+  writes the layout at that version and `gen-projection.sh`/`wine-tool.sh` read
+  it back; the installer URL stays in `fetch-sdk.sh` beside its cross-check —
+  and `CPPWINRT_FALLBACK`, used only when xwin's headers are not there to be
+  read.
 - **Nothing from Microsoft is redistributed.** `fetch-sdk.sh` and `xwin`
   download at run time under the SDK licence. Do not commit the result, do not
   cache it in an artefact store, do not check in a `.winmd` or a `.pri`.

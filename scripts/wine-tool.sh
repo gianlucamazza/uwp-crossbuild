@@ -17,7 +17,7 @@ here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 . "$here/common.sh"
 
 SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
-SDK_VERSION="${UWP_SDK_VERSION:-10.0.22621.0}"
+SDK_VERSION="${UWP_SDK_VERSION:-$UWP_SDK_VERSION_DEFAULT}"
 
 KITS="$SDK_ROOT/Windows Kits/10"
 BIN_X64="$KITS/bin/$SDK_VERSION/x64"

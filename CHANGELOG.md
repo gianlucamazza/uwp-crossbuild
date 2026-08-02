@@ -9,6 +9,15 @@ a specific version, and knowing which is the whole point of writing it down.
 
 ## Unreleased
 
+### Changed
+
+- **The default SDK version is pinned once, in `common.sh`.** It was three
+  literal copies — `fetch-sdk.sh`, `gen-projection.sh`, `wine-tool.sh` — and
+  fetch-sdk.sh *writes* the layout at that version while the other two *read*
+  it back, so a copy that drifted would fail as "tool not found", naming
+  neither copy. `UWP_SDK_VERSION` still overrides it everywhere; a test now
+  holds the literal to one file.
+
 ### Fixed
 
 - **Two citations still said `README, "Fourteen things"`** — the list has been

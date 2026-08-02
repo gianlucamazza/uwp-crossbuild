@@ -18,7 +18,7 @@ here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
 WORK="${UWP_SDK_WORK:-$HOME/.cache/uwp-crossbuild/work}"
-SDK_VERSION="${UWP_SDK_VERSION:-10.0.22621.0}"
+SDK_VERSION="${UWP_SDK_VERSION:-$UWP_SDK_VERSION_DEFAULT}"
 SDK_INSTALLER_URL="${UWP_SDK_URL:-https://go.microsoft.com/fwlink/?linkid=2196241}"
 # cppwinrt.exe writes a static_assert pinning the version of the winrt/ headers
 # it expects, so its version must match the projection headers xwin installs —

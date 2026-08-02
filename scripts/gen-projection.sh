@@ -22,7 +22,7 @@ here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=scripts/common.sh
 . "$here/common.sh"
 SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
-SDK_VERSION="${UWP_SDK_VERSION:-10.0.22621.0}"
+SDK_VERSION="${UWP_SDK_VERSION:-$UWP_SDK_VERSION_DEFAULT}"
 UNION="$SDK_ROOT/Windows Kits/10/UnionMetadata/$SDK_VERSION"
 
 idl=""

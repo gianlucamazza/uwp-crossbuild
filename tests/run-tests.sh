@@ -309,6 +309,19 @@ else
 fi
 rm -rf "$tmp"
 
+echo "the SDK default is pinned once"
+# fetch-sdk.sh writes the layout at the version common.sh pins;
+# gen-projection.sh and wine-tool.sh read it back. A second literal copy is
+# exactly the disagreement common.sh exists to prevent, and its symptom —
+# "tool not found" — names neither copy.
+# shellcheck source=scripts/common.sh
+sdk_default="$(. "$scripts/common.sh" && echo "$UWP_SDK_VERSION_DEFAULT")"
+assert "common.sh declares the default SDK version" "UWP_SDK_VERSION_DEFAULT is empty" \
+	test -n "$sdk_default"
+extra_pins="$(grep -rlF "$sdk_default" "$scripts" | grep -v 'common\.sh$' || true)"
+assert "the version literal lives only in common.sh" "also in: $extra_pins" \
+	test -z "$extra_pins"
+
 echo "publish-aur.sh guards"
 fails_with "a version is required" "--version is required" "$packaging/publish-aur.sh"
 fails_with "a version that is not one is refused" "not a version" \
