@@ -99,6 +99,11 @@ EXCEPTION_HANDLING = {
     "false": "",
 }
 FAVOR = {"Speed": "/Ot", "Size": "/Os", "Neither": ""}
+# What Identity/@ProcessorArchitecture must say for the platform being built.
+# "neutral" is legal under any platform and an absent attribute is not checked;
+# a platform outside this table (Win32 evaluates, it just cannot be built) is
+# not checked either — build-project.sh refuses it before anything installs.
+MANIFEST_ARCHITECTURE = {"x64": "x64", "arm64": "arm64"}
 BASIC_RUNTIME_CHECKS = {
     "Default": "",
     "StackFrameRuntimeCheck": "/RTCs",
@@ -649,10 +654,18 @@ class Description:
             None,
         )
         self.executable = self._executable()
+        self._check_architecture()
         self.deploy = self._deploy()
         self.packages = self._packages()
         self.undefined = sorted(evaluator.undefined)
         self.skipped = sorted(evaluator.skipped)
+
+    def _manifest_root(self):
+        path = self.directory / self.manifest
+        try:
+            return ET.parse(path).getroot()
+        except (ET.ParseError, OSError) as error:
+            raise Refusal(f"{self.manifest}: not readable as XML: {error}") from error
 
     def _executable(self):
         """The name the OS will look for, taken from the manifest and checked
@@ -663,11 +676,7 @@ class Description:
         wrote its executable under another name."""
         if self.type != "Application" or not self.manifest:
             return f"{self.name}.exe"
-        path = self.directory / self.manifest
-        try:
-            root = ET.parse(path).getroot()
-        except (ET.ParseError, OSError) as error:
-            raise Refusal(f"{self.manifest}: not readable as XML: {error}") from error
+        root = self._manifest_root()
         declared = next(
             (
                 element.get("Executable")
@@ -689,6 +698,40 @@ class Description:
                 f"so that they agree."
             )
         return declared
+
+    def _check_architecture(self):
+        """Identity/@ProcessorArchitecture has to agree with the platform.
+
+        The manifest is copied into the layout verbatim, so a --platform ARM64
+        build would otherwise ship its ARM64 executable under an identity still
+        claiming x64 — a mismatch nothing reports until a device is asked to
+        install it."""
+        if self.type != "Application" or not self.manifest:
+            return
+        expected = MANIFEST_ARCHITECTURE.get(
+            self.evaluator.properties.get("Platform", "").lower()
+        )
+        if expected is None:
+            return
+        # tag() strips the MSBuild namespace; the manifest carries the appx one,
+        # so split on the brace ElementTree leaves in front of the local name.
+        identity = next(
+            (
+                element.get("ProcessorArchitecture")
+                for element in self._manifest_root().iter()
+                if element.tag.split("}")[-1] == "Identity"
+            ),
+            None,
+        )
+        if identity is None or identity.lower() in ("neutral", expected):
+            return
+        raise Refusal(
+            f"{self.manifest} declares ProcessorArchitecture={identity!r}, and "
+            f"this is an {expected} build. The layout would carry an {expected} "
+            f"executable under an identity claiming {identity!r}; set the "
+            f"manifest's Identity/@ProcessorArchitecture to {expected!r}, or "
+            f"build with the platform the manifest names."
+        )
 
     def _relative(self, path):
         try:
