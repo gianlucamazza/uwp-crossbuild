@@ -122,6 +122,8 @@ libs=(
 )
 
 if [[ $uwp -eq 1 ]]; then
+	command -v llvm-dlltool >/dev/null ||
+		die "llvm-dlltool not found — it ships with LLVM, beside clang-cl"
 	extra+=(/D__WRL_NO_DEFAULT_LIB__)
 	# NOGDI, because the app container has no GDI and the names collide with the
 	# ones an application actually draws with. wingdi.h declares Polyline,
@@ -156,6 +158,26 @@ fi
 # refuses to compile with clang by design. C++20's <coroutine> works.
 objdir="${UWP_OBJ_DIR:-$out.objs}"
 mkdir -p "$objdir"
+
+if [[ $uwp -eq 1 ]]; then
+	# EncodePointer and DecodePointer: xwin's kernel32.lib imports them from
+	# api-ms-win-core-util-l1-1-0.dll, an apiset the Xbox app container does
+	# not provide — the package installs, and the loader then fails the launch
+	# with 0x80070002, naming nothing. The static CRT reaches for the pair in
+	# its optimised initialisation paths, so any /O2 build can pick the import
+	# up with no application code involved. include/appcontainer-pointers.def
+	# reroutes exactly these two names to KERNELBASE.dll, which exports them
+	# and is present in every app-container process; first in the list, so
+	# they resolve here before kernel32.lib is consulted.
+	case "$ARCH_DIR" in
+	aarch64) machine=arm64 ;;
+	*) machine=i386:x86-64 ;;
+	esac
+	pointers="$objdir/appcontainer-pointers.lib"
+	[[ -f "$pointers" ]] || llvm-dlltool -m "$machine" \
+		-d "$here/../include/appcontainer-pointers.def" -l "$pointers"
+	libs=("$pointers" "${libs[@]}")
+fi
 
 # The C++ flags. The precompiled header is C++ by definition, and so is every
 # source that is not a .c.

@@ -20,9 +20,19 @@ void App::OnLaunched(
 
 } // namespace winrt::hello::implementation
 
-// The OS starts this executable and XAML calls back into App. Application::Start
-// creates the single-threaded apartment itself, so do not init_apartment first.
+// The OS starts this executable and XAML calls back into App.
+//
+// init_apartment() — the multi-threaded default — before Application::Start,
+// and it is not optional: XAML requires the *first* access to the Application
+// object to come from the MTA, and it owns creating its own UI thread from
+// there. With no apartment, or with a single-threaded one, the factory call
+// inside Start throws winrt::hresult_wrong_thread -> std::terminate -> abort,
+// which the activation manager reports only as 0x8027025B; the origination
+// message — "The Application Object must initially be accessed from the
+// multi-thread apartment" — is visible only in a crash dump. Observed on an
+// Xbox Series S, OS 26100.8866; README gotcha 17.
 int __stdcall wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    winrt::init_apartment();
     Application::Start([](auto&&) { winrt::make<winrt::hello::implementation::App>(); });
     return 0;
 }

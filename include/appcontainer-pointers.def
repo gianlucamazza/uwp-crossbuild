@@ -1,0 +1,17 @@
+; EncodePointer and DecodePointer, resolved from KERNELBASE.dll by name.
+;
+; xwin's kernel32.lib routes both through api-ms-win-core-util-l1-1-0.dll,
+; an apiset the Xbox app container does not provide: the package installs and
+; the loader then fails the launch with 0x80070002, naming nothing. The static
+; CRT reaches for these two in its /O2 initialisation paths, so any optimised
+; --uwp build can pick the import up without a line of application code.
+; KERNELBASE.dll exports both and is loaded in every app-container process
+; (observed in crash-dump module lists on Xbox OS 26100.8866).
+;
+; build.sh turns this into an import library with llvm-dlltool and places it
+; before kernel32.lib, so these two names resolve here and everything else
+; stays where xwin put it.
+LIBRARY KERNELBASE.dll
+EXPORTS
+    EncodePointer
+    DecodePointer
