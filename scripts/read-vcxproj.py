@@ -716,7 +716,7 @@ class Description:
             if name == "LanguageStandard":
                 # stdcpp17 is overridden, not honoured: C++/WinRT below C++20
                 # reaches for <experimental/coroutine>, whose first line is an
-                # #error refusing clang. See README, "Fourteen things", 1.
+                # #error refusing clang. See the README's gotcha list, item 1.
                 if value in ("stdcpp17", "stdcpp14", "Default", ""):
                     std["cxx"] = "c++20"
                 elif value == "stdcpp20":

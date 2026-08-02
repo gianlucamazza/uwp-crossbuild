@@ -7,6 +7,15 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
+## Unreleased
+
+### Fixed
+
+- **Two citations still said `README, "Fourteen things"`** — the list has been
+  "Eighteen things" since 0.3.0, and the number will keep moving. The comment
+  in `read-vcxproj.py` and its twin in `tests/run-tests.sh` now cite the list
+  by role ("the README's gotcha list") instead of by a count that rots.
+
 ## 0.4.0 — 2026-08-02
 
 The day the toolchain's output was first observed _running_: hello-uwp, built
