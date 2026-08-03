@@ -99,6 +99,18 @@ sys.exit(f"error: {sys.argv[1]}: no <{sys.argv[2]} {sys.argv[3]}=...>")
 PY
 }
 
+# The plural sibling: every value of the attribute, zero lines when the element
+# does not appear — for the ones that legally repeat, like PackageDependency.
+manifest_attrs() { # manifest_attrs <file> <element localname> <attribute>
+	python3 - "$1" "$2" "$3" <<'PY'
+import sys, xml.etree.ElementTree as ET
+root = ET.parse(sys.argv[1]).getroot()
+for element in root.iter():
+    if element.tag.rsplit("}", 1)[-1] == sys.argv[2] and element.get(sys.argv[3]):
+        print(element.get(sys.argv[3]))
+PY
+}
+
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
@@ -143,6 +155,20 @@ step "Installing $identity on $UWP_DEVICE_URL"
 full_name="$("${portal[@]}" --list | awk -F'\t' -v n="$identity" '$0 ~ "^"n"_" {print $1; exit}')"
 [[ -n "$full_name" ]] ||
 	die "$identity installed but not listed by the device — openappx deploy --list disagrees"
+
+# A framework the manifest depends on is nothing the install verified: the
+# Device Portal registers a package with unmet dependencies without complaint,
+# and the loader then fails the launch as 0x80070002, naming nothing. A warning
+# rather than a refusal — the device list is best-effort, and a framework can
+# arrive by other roads between now and the launch.
+installed="$("${portal[@]}" --list)"
+while read -r dependency; do
+	[[ -n "$dependency" ]] || continue
+	awk -F'\t' -v n="$dependency" '$0 ~ "^"n"_" {found=1} END {exit !found}' <<<"$installed" ||
+		echo "warning: the manifest depends on $dependency and the device does not
+  list it — the launch will fail as 0x80070002, naming nothing, until the
+  framework is installed" >&2
+done < <(manifest_attrs "$manifest" PackageDependency Name)
 
 if [[ $launch -eq 1 ]]; then
 	step "Launching $full_name !$app_id"

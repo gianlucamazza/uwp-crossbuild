@@ -6,6 +6,12 @@
 #
 #     --uwp        build for the app container: /appcontainer and the windows
 #                  subsystem. Required for anything that installs as a UWP app.
+#     --store-crt  link the DLL runtime against the store CRT
+#                  (VCRUNTIME140_APP.dll and friends) instead of the desktop
+#                  one, using the import libraries fetch-vclibs.sh generates.
+#                  Only with --uwp: the store CRT is a property of the app
+#                  container. The package must declare the Microsoft.VCLibs
+#                  framework dependency — build-project.sh checks it does.
 #     -I / --include  an extra include directory (repeatable). Use it for
 #                  third-party headers — a NuGet native package, say — so a
 #                  source tree written for Visual Studio compiles unmodified.
@@ -45,6 +51,7 @@ out=""
 pch=""
 jobs="$(nproc 2>/dev/null || echo 4)"
 uwp=0
+store_crt=0
 static_lib=0
 sources=()
 extra=()
@@ -58,6 +65,7 @@ while [[ $# -gt 0 ]]; do
 	--pch) value "$1" $# "${2:-}" && pch="$2" && shift 2 ;;
 	--jobs) value "$1" $# "${2:-}" && jobs="$2" && shift 2 ;;
 	--uwp) uwp=1 && shift ;;
+	--store-crt) store_crt=1 && shift ;;
 	--static-lib) static_lib=1 && shift ;;
 	-I | --include) value "$1" $# "${2:-}" && include_dirs+=("/I$2") && shift 2 ;;
 	--link-arg) value "$1" $# "${2:-}" && link_args+=("$2") && shift 2 ;;
@@ -86,6 +94,20 @@ done
 	die "--static-lib and --uwp are exclusive: /appcontainer is a property of
   an image, and an archive is not one. The application that links this library
   is where --uwp belongs."
+[[ $store_crt -eq 0 || $uwp -eq 1 ]] ||
+	die "--store-crt without --uwp is a contradiction: the store CRT exists for
+  the app container, and outside it the desktop /MD works as it is."
+# Checked before the xwin CRT: the fix is a different script, and a message
+# naming fetch-sdk.sh for a missing store CRT would send someone to re-run a
+# download that cannot help.
+vclibs_lib="$UWP_VCLIBS_ROOT/lib/$ARCH_DIR"
+if [[ $store_crt -eq 1 ]]; then
+	for lib in vcruntime140_app.lib msvcp140_app.lib; do
+		[[ -f "$vclibs_lib/$lib" ]] ||
+			die "no store CRT import libraries at $vclibs_lib — run
+  scripts/fetch-vclibs.sh (with the platform this build is for)"
+	done
+fi
 [[ -d "$XWIN_ROOT/crt/include" ]] || die "no CRT at $XWIN_ROOT — run fetch-sdk.sh"
 command -v clang-cl >/dev/null || die "clang-cl not found"
 [[ $static_lib -eq 0 ]] || command -v llvm-lib >/dev/null ||
@@ -147,6 +169,26 @@ if [[ $uwp -eq 1 ]]; then
 	# partition while the MSVC STL still does `using _CSTD system;`
 	# unconditionally. Pass it via `--` if you want to audit a translation unit.
 	link_args+=(/appcontainer /subsystem:windows)
+fi
+
+store_last=()
+if [[ $store_crt -eq 1 ]]; then
+	# The link that produced imports identical to a Visual Studio build's
+	# (issue #7, proven on hardware 2026-08-02): shut out msvcprt.lib and
+	# vcruntime.lib, whose members import the desktop DLLs, and hand lld the
+	# whole generated *_app set instead — it only imports what is referenced.
+	# libcpmt.lib is real and goes LAST, after every project --link-arg: it
+	# carries the STL's static helpers (__std_find_last_trivial_2 and kin)
+	# that msvcprt.lib would have provided and the VCLibs DLLs do not export;
+	# placed last it satisfies only what the import libraries left
+	# unresolved, never shadowing an export they do have.
+	store_libs=()
+	for lib in "$vclibs_lib"/*_app.lib; do
+		store_libs+=("$(basename "$lib")")
+	done
+	link_args+=(/nodefaultlib:msvcprt.lib /nodefaultlib:vcruntime.lib
+		/libpath:"$vclibs_lib" "${store_libs[@]}")
+	store_last=(libcpmt.lib)
 fi
 
 # -mcx16 enables cmpxchg16b, which MSVC assumes on x64 and clang does not.
@@ -243,5 +285,8 @@ if [[ $static_lib -eq 1 ]]; then
 	exec llvm-lib "/out:$out" "${objects[@]}"
 fi
 
+# ${store_last[@]} stays the final token: no --link-arg a caller adds may land
+# after libcpmt.lib, or it could satisfy a symbol the import libraries export.
 exec clang-cl -target "$TARGET" "${objects[@]}" -o "$out" \
-	-fuse-ld=lld-link -link "${libs[@]}" ${link_args[@]+"${link_args[@]}"}
+	-fuse-ld=lld-link -link "${libs[@]}" ${link_args[@]+"${link_args[@]}"} \
+	${store_last[@]+"${store_last[@]}"}
