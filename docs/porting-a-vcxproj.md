@@ -170,6 +170,17 @@ the finished layout (executable, winmd, assets, the copied DLLs,
 subject exactly, so a project's own manifest usually needs that one attribute
 changed for a development build.
 
+A project that sets `MultiThreadedDLL` (`/MD`) has two roads through the app
+container. By default the runtime is made static — that is the fallback, and
+it launches. To keep `/MD`, run `fetch-vclibs.sh` once (pointing `--appx` at a
+`Microsoft.VCLibs.<arch>.14.00.appx` — a Visual Studio install or a VS-built
+package's `Dependencies` folder has one) and the build links the store CRT
+instead; the manifest must then declare the `Microsoft.VCLibs.140.00`
+`<PackageDependency>` — `build-project.sh` refuses otherwise, printing the
+exact element — and the framework must be installed on the device, or the
+launch fails as `0x80070002` while the install reports nothing (the README's
+gotcha list tells that story).
+
 ## What it cost, measured
 
 |                                 |                                      |

@@ -11,6 +11,25 @@ a specific version, and knowing which is the whole point of writing it down.
 
 ### Added
 
+- **`/MD` works in the app container, through the store CRT.** The new
+  `fetch-vclibs.sh` generates the import libraries modern MSVC no longer
+  ships, out of the `Microsoft.VCLibs` framework appx itself (a file you
+  point it at, or a download it refuses without an explicit
+  `--accept-license`): export tables read with `llvm-readobj`, `.def`
+  written, `.lib` generated with `llvm-dlltool`. With them in place the
+  evaluator honours `MultiThreadedDLL` instead of overriding it, and
+  `build.sh --store-crt` links the `*_app` set — `libcpmt.lib` last, for the
+  STL's static helpers the VCLibs DLLs do not export — producing imports
+  identical to a Visual Studio build's, per the recipe proven on hardware in
+  issue #7. Without them the static override stands unchanged.
+  `build-project.sh` refuses a store-CRT build whose manifest does not
+  declare the `Microsoft.VCLibs.140.00` dependency, printing the element to
+  paste, and `run-on-device.sh` warns after install when the device does not
+  list a framework the manifest names — the Device Portal registers a
+  package with unmet dependencies without complaint, and the loader then
+  fails the launch as `0x80070002`, naming nothing. The gotcha list grows
+  that entry and becomes "Twenty things".
+
 - **Four settings the default Visual Studio template emits are now understood**
   instead of refused: `RuntimeTypeInfo` (`/GR`, `/GR-`), the Release linker's
   `OptimizeReferences`/`EnableCOMDATFolding` pair (`/opt:ref`, `/opt:icf` —
@@ -21,9 +40,11 @@ a specific version, and knowing which is the whole point of writing it down.
 - **`build-app.sh` takes `--platform x64|ARM64`**, like `build-project.sh`
   already did. The platform table — which values can be built, what
   `UWP_TARGET`/`UWP_ARCH_DIR` each means — moves to `common.sh` so the two
-  front doors cannot disagree about it; explicit values in the environment
-  still win, and a third architecture is one row there plus the dlltool
-  machine case in `build.sh`.
+  front doors cannot disagree about it. A `--platform` left at its default
+  yields to `UWP_TARGET`/`UWP_ARCH_DIR` from the environment — the workflow
+  that predates the flag — while one actually typed refuses an environment
+  that contradicts it, naming both sides; a third architecture is one row
+  there plus the dlltool machine case in `build.sh`.
 - **A manifest whose `ProcessorArchitecture` is not the platform's is refused.**
   The manifest is copied into the layout verbatim, so a `--platform ARM64`
   build of an x64 manifest would ship its ARM64 executable under an identity
