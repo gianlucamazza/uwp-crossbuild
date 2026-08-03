@@ -89,6 +89,7 @@ opaque `0x8D160120`, so the script refuses them up front.
 | Link a whole application      | `lld-link`                                            | ✅ 7.5 MB PE32+                |
 | Package, sign, deploy         | [openappx](https://github.com/gianlucamazza/openappx) | ✅ installed on an Xbox        |
 | Launch, on the console        | `run-on-device.sh`, Device Portal                     | ✅ observed running (Series S) |
+| `/MD` via the store CRT       | `fetch-vclibs.sh` + `build.sh --store-crt`            | ✅ imports match a VS build's  |
 
 ## Known limits
 
@@ -168,6 +169,9 @@ Every location, version and target the scripts assume can be overridden:
 | `UWP_C_STD`                | `c17`                                     | `/std:` for `.c` sources                                      |
 | `UWP_OBJ_DIR`              | `<out>.objs` (`<out>.build` for a layout) | objects, PCH and generated files                              |
 | `UWP_NUGET_FEED`           | `https://www.nuget.org/api/v2/package`    | where `restore-nuget.sh` downloads from                       |
+| `UWP_VCLIBS_ROOT`          | `~/.cache/uwp-crossbuild/vclibs`          | the store CRT cache `fetch-vclibs.sh` fills (n°19)            |
+| `UWP_VCLIBS_URL`           | none — there is no stable public link     | where `fetch-vclibs.sh --url` downloads the framework appx    |
+| `UWP_VCLIBS_ACCEPT_LICENSE`| unset                                     | `1` accepts Microsoft's terms for that download, as a flag would |
 | `UWP_DEVICE_ENV`           | `~/.config/uwp-crossbuild/device-env`     | the file `run-on-device.sh` sources for the device variables  |
 | `UWP_DEVICE_URL` / `_USER` | from that file                            | the Device Portal, as in Dev Home → Remote Access             |
 | `UWP_DEVICE_PFX`           | `~/.config/uwp-crossbuild/dev.pfx`        | the signing certificate; subject must equal the Publisher     |
@@ -175,7 +179,7 @@ Every location, version and target the scripts assume can be overridden:
 `OPENAPPX_DEVICE_PASSWORD` belongs to openappx and completes the device trio;
 `wine-tool.sh` also honours `WINEDEBUG`, defaulting it to `-all`.
 
-## Nineteen things that will waste your afternoon
+## Twenty things that will waste your afternoon
 
 Every one of these fails while pointing somewhere else. The scripts handle them;
 this is the record of why they exist.
@@ -305,17 +309,34 @@ invalid`, which is true — that is not legal XML — but says nothing about
     to `KERNELBASE.dll`, which exports them and is present in every
     app-container process.
 
-19. **`/MD` cannot work in the app container.** MSBuild's UWP toolset satisfies
-    the DLL runtimes with the store CRT — `VCRUNTIME140_APP.dll` and friends,
-    delivered by the `Microsoft.VCLibs` framework package — but xwin carries no
-    store import libraries, because modern MSVC no longer ships them. Linked
-    `/MD` here, the executable imports the desktop `VCRUNTIME140.dll`, which
-    does not resolve inside the container: the package installs, and activation
-    fails as `0x80270300`. Observed end-to-end on Xbox OS 26100.8866; the same
-    application statically linked launches. So `read-vcxproj.py` maps
-    `MultiThreadedDLL`/`MultiThreadedDebugDLL` to their static counterparts
-    whenever `AppContainerApplication` is true — the one place it deliberately
-    changes what MSBuild would do rather than mirroring or refusing it.
+19. **`/MD` in the app container needs the store CRT, and Microsoft no longer
+    ships its import libraries.** MSBuild's UWP toolset satisfies the DLL
+    runtimes with `VCRUNTIME140_APP.dll` and friends, delivered by the
+    `Microsoft.VCLibs` framework package; modern MSVC ships no import
+    libraries for them, so xwin cannot carry any. Linked `/MD` against the
+    desktop libraries instead, the executable imports `VCRUNTIME140.dll`,
+    which does not resolve inside the container: the package installs, and
+    activation fails as `0x80270300` (observed end-to-end on Xbox OS
+    26100.8866; the same application statically linked launches). Two ways
+    out, and `read-vcxproj.py` picks between them by what is on disk:
+    `fetch-vclibs.sh` generates the missing import libraries from the
+    framework's own DLLs, and with them in place `/MD` is honoured —
+    `build.sh --store-crt` shuts out `msvcprt.lib`/`vcruntime.lib` and links
+    the generated `*_app` set, `libcpmt.lib` last, producing imports
+    identical to a Visual Studio build's. Without them, the DLL runtimes are
+    mapped to their static counterparts whenever `AppContainerApplication`
+    is true — still the one place the evaluator deliberately changes what
+    MSBuild would do rather than mirroring or refusing it.
+
+20. **The Device Portal registers a package whose dependencies are missing.**
+    A store-CRT build needs the `Microsoft.VCLibs.140.00` framework declared
+    as a `<PackageDependency>` *and installed on the device*; the install
+    step verifies neither, completes without complaint, and the loader then
+    fails the launch as `0x80070002`, naming nothing — the same code as
+    n°18, from the portal indistinguishable. `build-project.sh` refuses a
+    store-CRT build whose manifest omits the dependency (printing the exact
+    element to paste), and `run-on-device.sh` warns after install when the
+    device does not list a framework the manifest names.
 
 ## Layout
 
@@ -327,6 +348,7 @@ scripts/fix-header-case.sh   case aliases for a case-sensitive filesystem
 scripts/gen-projection.sh    .idl -> .winmd -> App.g.h + module.g.cpp + winrt/
 scripts/gen-resources.sh     a layout -> resources.pri
 scripts/build.sh             clang-cl + lld-link, with PCH and parallel compiles
+scripts/fetch-vclibs.sh      store CRT import libraries, out of Microsoft's VCLibs appx (n°19)
 scripts/build-app.sh         all of the above: a project directory -> a layout
 scripts/read-vcxproj.py      a Visual Studio project -> what it builds, as JSON
 scripts/restore-nuget.sh     packages.config -> packages/, from nuget.org
@@ -386,7 +408,10 @@ The scripts are MIT ([LICENSE](LICENSE)). **Nothing from Microsoft is
 redistributed**: `fetch-sdk.sh` and `xwin` fetch the SDK and CRT from Microsoft's
 CDN at run time, under the Windows SDK licence, into a cache this repository
 never touches. `restore-nuget.sh` fetches NuGet packages from nuget.org the same
-way, under their own licences. No `.winmd`, `.pri`, header, library or package
+way, under their own licences. `fetch-vclibs.sh` reads the VCLibs framework
+appx — a file you point it at, or a download it refuses without an explicit
+`--accept-license` — under Microsoft's terms, and its generated import
+libraries stay in the same untouched cache. No `.winmd`, `.pri`, header, library or package
 from any of those downloads belongs in a commit.
 
 ## Next
