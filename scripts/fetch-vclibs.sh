@@ -67,6 +67,8 @@ platform_env "$platform" $platform_explicit
   Kits\\10\\ExtensionSDKs\\Microsoft.VCLibs\\14.0\\Appx\\Retail\\<arch>\\, and
   a VS-built package carries one in its Dependencies folder."
 [[ -z "$appx" || -z "$url" ]] || die "--appx and --url are exclusive: one source, not two"
+# Answerable on any machine, so it comes before the tool checks.
+[[ -z "$appx" || -f "$appx" ]] || die "no such file: $appx"
 
 # The consent gate comes before the tool checks: what may be downloaded is
 # answerable on any machine, and it is the question that matters most.
@@ -90,7 +92,6 @@ mkdir -p "$UWP_VCLIBS_ROOT/appx"
 step "Obtaining the appx"
 cached="$UWP_VCLIBS_ROOT/appx/Microsoft.VCLibs.$platform.14.00.appx"
 if [[ -n "$appx" ]]; then
-	[[ -f "$appx" ]] || die "no such file: $appx"
 	cp -f "$appx" "$cached"
 else
 	[[ -f "$cached" ]] || fetch "$url" "$cached"

@@ -18,6 +18,11 @@ packaging="$here/../packaging"
 passed=0
 failed=0
 
+# The developer's real store-CRT cache must not decide a test: the evaluator
+# turns /MD-vs-/MT on the presence of UWP_VCLIBS_ROOT/lib/<arch>, and presence
+# in a test is a fixture, never whatever this machine happens to have fetched.
+export UWP_VCLIBS_ROOT=/nonexistent
+
 ok() {
 	printf '  ok   %s\n' "$1"
 	passed=$((passed + 1))
@@ -181,7 +186,36 @@ mkdir -p "$tmp/crt/include"
 fails_with "--static-lib and --uwp are exclusive" "exclusive" \
 	env UWP_XWIN_ROOT="$tmp" "$scripts/build.sh" --static-lib --uwp \
 	--out a.lib "$tmp/a.cpp"
+fails_with "--store-crt without --uwp is a contradiction" "store CRT" \
+	env UWP_XWIN_ROOT="$tmp" "$scripts/build.sh" --store-crt --out a.exe "$tmp/a.cpp"
+# Checked before the xwin CRT: the fix is fetch-vclibs.sh, and a message naming
+# fetch-sdk.sh would send someone to re-run a download that cannot help.
+fails_with "--store-crt without the libraries names fetch-vclibs.sh" "fetch-vclibs.sh" \
+	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --uwp --store-crt \
+	--out a.exe "$tmp/a.cpp"
+# libcpmt.lib must stay the link's final token — anywhere earlier it could
+# satisfy a symbol the import libraries export. Pinned statically, like the
+# SDK default: its expansion is the last thing on build.sh's exec line.
+assert "libcpmt.lib's expansion is the exec line's last token" "store_last moved" \
+	grep -qP '^\t\$\{store_last\[@\]\+"\$\{store_last\[@\]\}"\}$' "$scripts/build.sh"
 rm -rf "$tmp"
+
+echo "fetch-vclibs.sh guards"
+fails_with "a source is required" "either --appx FILE or --url URL" \
+	"$scripts/fetch-vclibs.sh"
+fails_with "two sources are one too many" "exclusive" \
+	"$scripts/fetch-vclibs.sh" --appx x --url y
+fails_with "a missing --appx file says so" "no such file" \
+	"$scripts/fetch-vclibs.sh" --appx /nonexistent/vclibs.appx
+# The consent gate has to come before any network access: the URL here answers
+# nothing, so a regression that reaches for it fails loudly on the connection
+# rather than passing this test quietly.
+fails_with "downloading needs explicit licence acceptance" "licence acceptance" \
+	"$scripts/fetch-vclibs.sh" --url http://127.0.0.1:1/vclibs.appx
+fails_with "a platform outside the matrix is refused" "x64 or ARM64" \
+	"$scripts/fetch-vclibs.sh" --appx x --platform Win32
+fails_with "an unknown argument is refused" "unknown argument" \
+	"$scripts/fetch-vclibs.sh" --publish-everything
 
 echo "--help"
 # Installed as uwp-build and friends, where the header comment nobody can see is
@@ -356,6 +390,14 @@ assert "a version literal lives only in common.sh" "also in: $extra_pins" \
 	test -z "$extra_pins"
 assert "and the one there is the default itself" "UWP_SDK_VERSION_DEFAULT moved" \
 	grep -qF "UWP_SDK_VERSION_DEFAULT=\"$sdk_default\"" "$scripts/common.sh"
+# The store-CRT root is pinned twice by necessity — common.sh for bash, and
+# read-vcxproj.py for python, which cannot source it — so the two copies are
+# held to the same directory here.
+# shellcheck disable=SC2016  # the $HOME below is the literal being pinned
+assert "common.sh defaults the store-CRT root" "the default moved" \
+	grep -qF -- '-$HOME/.cache/uwp-crossbuild/vclibs}' "$scripts/common.sh"
+assert "and python's fallback names the same directory" "the literals disagree" \
+	grep -qF '"~/.cache/uwp-crossbuild/vclibs"' "$scripts/read-vcxproj.py"
 
 echo "publish-aur.sh guards"
 fails_with "a version is required" "--version is required" "$packaging/publish-aur.sh"
@@ -457,6 +499,29 @@ succeeds_with "outside the container the DLL runtime is honoured" "/MD" \
 	"$read_vcxproj" "$vcxproj" --property AppContainerApplication=false --field options
 lacks "as the release runtime, not the debug one" "/MDd" \
 	"$read_vcxproj" "$vcxproj" --property AppContainerApplication=false --field options
+# The other branch of the runtime story: with the store CRT import libraries
+# fetch-vclibs.sh generates in place, /MD is honoured and the project says so.
+# Empty files are enough — the probe is presence-only; generation itself runs
+# only in the manual workflow, against the real appx.
+vclibs="$(mktemp -d)"
+mkdir -p "$vclibs/lib/x86_64"
+touch "$vclibs/lib/x86_64/vcruntime140_app.lib" "$vclibs/lib/x86_64/msvcp140_app.lib"
+succeeds_with "/MD is honoured when the store CRT is there" "/MD" \
+	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field options
+lacks "and the static override stays out" "/MT" \
+	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field options
+succeeds_with "and the project says so" "true" \
+	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field store_crt
+succeeds_with "--flags carries it to build.sh" "--store-crt" \
+	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --flags
+# A half-generated cache is exactly what a presence probe gets wrong, so the
+# probe wants both libraries: one alone still means the static fallback.
+rm "$vclibs/lib/x86_64/msvcp140_app.lib"
+succeeds_with "half a cache still means the static fallback" "/MT" \
+	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field options
+succeeds_with "and the project says that too" "false" \
+	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field store_crt
+rm -rf "$vclibs"
 # Rows the default Visual Studio template emits: RTTI off, and the Release
 # linker's /opt pair — lld-link implements both.
 succeeds_with "RuntimeTypeInfo false is /GR-" "/GR-" \
@@ -556,6 +621,24 @@ fails_with "--platform typed out refuses a contradicting environment" "Drop the 
 	env UWP_ARCH_DIR=x86_64 \
 	"$scripts/build-project.sh" --project "$vcxproj" --platform ARM64 \
 	--out /tmp/nowhere
+# A store-CRT build whose manifest does not admit the VCLibs dependency is
+# refused before the compile: nothing later objects — the Device Portal
+# registers the package, and the loader fails the launch as 0x80070002,
+# naming nothing.
+vclibs="$(mktemp -d)"
+deps_out="$(mktemp -d)"
+mkdir -p "$vclibs/lib/x86_64"
+touch "$vclibs/lib/x86_64/vcruntime140_app.lib" "$vclibs/lib/x86_64/msvcp140_app.lib"
+fails_with "a store-CRT manifest must declare the VCLibs dependency" "PackageDependency" \
+	env UWP_VCLIBS_ROOT="$vclibs" "$scripts/build-project.sh" --project "$vcxproj" \
+	--no-restore --out "$deps_out/layout"
+# The store-flavour manifest declares it: the check passes, and the run dies
+# later, on the toolchain this environment does not have.
+lacks "a manifest that declares it passes the check" "PackageDependency" \
+	env UWP_VCLIBS_ROOT="$vclibs" UWP_SDK_ROOT=/nonexistent UWP_XWIN_ROOT=/nonexistent \
+	"$scripts/build-project.sh" --project "$vcxproj" --property StoreSku=true \
+	--no-restore --out "$deps_out/layout"
+rm -rf "$vclibs" "$deps_out"
 # The winmd is named after the namespace the .idl declares — the manifest's
 # EntryPoint is resolved against <namespace>.winmd — so an .idl declaring none
 # stops the build here, not on a package that installs and fails to launch.
