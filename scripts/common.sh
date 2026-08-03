@@ -13,11 +13,13 @@
 #                              routine, not two that drift apart
 #   the layout doctrine        prepare_layout: what may be cleared and what may
 #                              not, which both front doors have to agree on
-#   the default SDK version    fetch-sdk.sh writes the layout at this version;
-#                              gen-projection.sh and wine-tool.sh read it back.
-#                              Three copies of the default could disagree, and
-#                              the symptom would be "tool not found" naming
-#                              neither copy
+#   the pinned defaults        the SDK version fetch-sdk.sh writes and
+#                              gen-projection.sh and wine-tool.sh read back,
+#                              and the store-CRT root fetch-vclibs.sh fills
+#                              and build.sh and read-vcxproj.py consult.
+#                              Copies of a default disagree eventually, and
+#                              the symptom — "tool not found", or /MD silently
+#                              overridden — names none of them
 #   the platform table         platform_env: which --platform values can be
 #                              built and what UWP_TARGET/UWP_ARCH_DIR each
 #                              means, which both front doors have to agree on
@@ -33,6 +35,13 @@
 # cross-check that both describe the same SDK.
 # shellcheck disable=SC2034  # consumed by the scripts that source this file
 UWP_SDK_VERSION_DEFAULT="10.0.22621.0"
+
+# Where fetch-vclibs.sh puts the store CRT: the VCLibs appx, its extracted
+# *_app.dll set, and the import libraries generated from them. Exported, unlike
+# the SDK default, because read-vcxproj.py — python, which cannot source this
+# file — probes it to decide whether /MD can be honoured in an app container;
+# it carries the same literal as a fallback, and a test pins the two together.
+export UWP_VCLIBS_ROOT="${UWP_VCLIBS_ROOT:-$HOME/.cache/uwp-crossbuild/vclibs}"
 
 die() {
 	echo "error: $*" >&2
