@@ -272,6 +272,24 @@ echo '<Package><Identity ProcessorArchitecture="arm64"/><Applications><Applicati
 	>"$arch/AppxManifest.xml"
 fails_with "a manifest whose architecture is not the platform's is refused" "ProcessorArchitecture" \
 	"$scripts/build-app.sh" --project "$arch" --out "$elsewhere/layout"
+# Parsed as XML, not grepped: a single-quoted attribute on a wrapped <Identity>
+# slipped past the old pattern, and the mismatch shipped instead of refusing.
+printf '%s\n' '<Package>' '  <Identity' "    ProcessorArchitecture='arm64'/>" \
+	'  <Applications><Application Id="x" Executable="hello.exe"/></Applications>' \
+	'</Package>' >"$arch/AppxManifest.xml"
+fails_with "a single-quoted, wrapped Identity is still refused" "ProcessorArchitecture" \
+	"$scripts/build-app.sh" --project "$arch" --out "$elsewhere/layout"
+# A --platform actually typed refuses an environment that contradicts it: the
+# pair would validate one architecture's manifest and compile another's
+# executable. Left at its default, the environment keeps winning — the workflow
+# that predates the flag — and the manifest check follows the effective target,
+# so the arm64 manifest passes it and the run dies later, at the missing SDK.
+fails_with "--platform typed out refuses a contradicting environment" "Drop the override" \
+	env UWP_TARGET=x86_64-pc-windows-msvc \
+	"$scripts/build-app.sh" --project "$arch" --out "$elsewhere/layout" --platform ARM64
+lacks "a defaulted --platform yields to the environment" "ProcessorArchitecture" \
+	env UWP_TARGET=aarch64-pc-windows-msvc UWP_ARCH_DIR=aarch64 UWP_SDK_ROOT=/nonexistent UWP_XWIN_ROOT=/nonexistent \
+	"$scripts/build-app.sh" --project "$arch" --out "$elsewhere/layout"
 rm -rf "$arch" "$sym" "$tmp" "$elsewhere"
 
 echo "wine-tool.sh guards"
@@ -329,9 +347,15 @@ echo "the SDK default is pinned once"
 sdk_default="$(. "$scripts/common.sh" && echo "$UWP_SDK_VERSION_DEFAULT")"
 assert "common.sh declares the default SDK version" "UWP_SDK_VERSION_DEFAULT is empty" \
 	test -n "$sdk_default"
-extra_pins="$(grep -rlF "$sdk_default" "$scripts" | grep -v 'common\.sh$' || true)"
-assert "the version literal lives only in common.sh" "also in: $extra_pins" \
+# Any four-component 10.0.* literal is a pin, whatever its value: a script
+# keeping an older default would pass a search that only knows the current one.
+# The web-installer URL is a fwlink, so it carries no version to except.
+extra_pins="$(grep -rlE --include='*.sh' '10\.0\.[0-9]+\.[0-9]+' "$scripts" |
+	grep -v 'common\.sh$' || true)"
+assert "a version literal lives only in common.sh" "also in: $extra_pins" \
 	test -z "$extra_pins"
+assert "and the one there is the default itself" "UWP_SDK_VERSION_DEFAULT moved" \
+	grep -qF "UWP_SDK_VERSION_DEFAULT=\"$sdk_default\"" "$scripts/common.sh"
 
 echo "publish-aur.sh guards"
 fails_with "a version is required" "--version is required" "$packaging/publish-aur.sh"
@@ -419,6 +443,10 @@ succeeds_with "--config Debug picks the other one" "/Od" \
 # mirroring or refusing it — both branches are pinned here.
 succeeds_with "the DLL runtime is made static inside an app container" "/MT" \
 	"$read_vcxproj" "$vcxproj" --field options
+# /MT is a substring of /MTd: without the negative, a Release build handed the
+# debug runtime would pass the positive check above.
+lacks "and it is the release runtime, not the debug one" "/MTd" \
+	"$read_vcxproj" "$vcxproj" --field options
 lacks "and /MD does not survive" "/MD" \
 	"$read_vcxproj" "$vcxproj" --field options
 succeeds_with "the Debug runtime likewise" "/MTd" \
@@ -426,6 +454,8 @@ succeeds_with "the Debug runtime likewise" "/MTd" \
 # A global property wins over the file, so the passthrough branch needs no
 # second fixture: outside the container the DLL runtime is honoured.
 succeeds_with "outside the container the DLL runtime is honoured" "/MD" \
+	"$read_vcxproj" "$vcxproj" --property AppContainerApplication=false --field options
+lacks "as the release runtime, not the debug one" "/MDd" \
 	"$read_vcxproj" "$vcxproj" --property AppContainerApplication=false --field options
 # Rows the default Visual Studio template emits: RTTI off, and the Release
 # linker's /opt pair — lld-link implements both.
@@ -520,6 +550,11 @@ fails_with "a library is not a package" "Only an Application" \
 # another platform's settings.
 fails_with "a platform nothing here can compile for" "x64 or ARM64" \
 	"$scripts/build-project.sh" --project "$vcxproj" --platform Win32 \
+	--out /tmp/nowhere
+# Both front doors share platform_env, and both refuse the same contradiction.
+fails_with "--platform typed out refuses a contradicting environment" "Drop the override" \
+	env UWP_ARCH_DIR=x86_64 \
+	"$scripts/build-project.sh" --project "$vcxproj" --platform ARM64 \
 	--out /tmp/nowhere
 # The winmd is named after the namespace the .idl declares — the manifest's
 # EntryPoint is resolved against <namespace>.winmd — so an .idl declaring none
