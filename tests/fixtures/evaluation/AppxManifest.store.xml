@@ -1,4 +1,8 @@
 <?xml version="1.0"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
+  <Dependencies>
+    <PackageDependency Name="Microsoft.VCLibs.140.00" MinVersion="14.0.0.0"
+        Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" />
+  </Dependencies>
   <Applications><Application Id="x" Executable="evaluation.exe" EntryPoint="evaluation.App"/></Applications>
 </Package>
