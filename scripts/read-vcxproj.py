@@ -104,6 +104,12 @@ FAVOR = {"Speed": "/Ot", "Size": "/Os", "Neither": ""}
 # a platform outside this table (Win32 evaluates, it just cannot be built) is
 # not checked either — build-project.sh refuses it before anything installs.
 MANIFEST_ARCHITECTURE = {"x64": "x64", "arm64": "arm64"}
+# Platform → the directory fetch-vclibs.sh generates into: platform_env in
+# common.sh is the authority for these names. The root default carries the
+# same literal as common.sh, which cannot be sourced from here — a test pins
+# the two copies together.
+VCLIBS_ARCH_DIR = {"x64": "x86_64", "arm64": "aarch64"}
+VCLIBS_ROOT_DEFAULT = os.path.expanduser("~/.cache/uwp-crossbuild/vclibs")
 BASIC_RUNTIME_CHECKS = {
     "Default": "",
     "StackFrameRuntimeCheck": "/RTCs",
@@ -634,6 +640,7 @@ class Description:
         for item in evaluator.items.get("ClCompile", []):
             language = "c" if item["path"].suffix.lower() == ".c" else "cpp"
             self.sources[language].append(self._relative(item["path"]))
+        self.store_crt = False  # set by _clcompile when /MD can be honoured
         self.compile_flags, self.includes, self.defines, self.std, self.pch = (
             self._clcompile()
         )
@@ -784,20 +791,27 @@ class Description:
             elif name == "Optimization":
                 flags.append(self._lookup(OPTIMIZATION, name, value))
             elif name == "RuntimeLibrary":
-                # In an app container the DLL runtimes are overridden to their
-                # static counterparts, not honoured: xwin carries no store CRT
-                # import libraries, so /MD would import the desktop
-                # VCRUNTIME140.dll and activation fails as 0x80270300 (Xbox
-                # Series S, OS 26100.8866; statically linked, the same
-                # application launches). The whole story is the README's
-                # gotcha list, item 19. This is the one place the evaluator
-                # changes MSBuild's answer instead of mirroring or refusing it.
+                # In an app container the DLL runtimes need the store CRT
+                # (VCRUNTIME140_APP.dll and friends): xwin carries no import
+                # libraries for it, because modern MSVC no longer ships them,
+                # so plain /MD would import the desktop VCRUNTIME140.dll and
+                # activation fails as 0x80270300 (Xbox Series S, OS
+                # 26100.8866; statically linked, the same application
+                # launches). When fetch-vclibs.sh has generated the libraries,
+                # /MD is honoured and build.sh --store-crt links them; when it
+                # has not, the override to the static counterpart stands —
+                # still the one place the evaluator changes MSBuild's answer
+                # instead of mirroring or refusing it. The whole story is the
+                # README's gotcha list, the app-container runtime entry.
                 container = (
                     self.evaluator.properties.get("AppContainerApplication", "")
                     == "true"
                 )
                 if container and value.endswith("DLL"):
-                    value = value[: -len("DLL")]
+                    if self._store_crt_present():
+                        self.store_crt = True
+                    else:
+                        value = value[: -len("DLL")]
                 flags.append(self._lookup(RUNTIME_LIBRARY, name, value))
             elif name == "ExceptionHandling":
                 flags.append(self._lookup(EXCEPTION_HANDLING, name, value))
@@ -860,6 +874,28 @@ class Description:
         if value not in table:
             raise Refusal(f"{name} {value!r} is not understood")
         return table[value]
+
+    def _store_crt_present(self):
+        """Whether fetch-vclibs.sh has generated this platform's store CRT.
+
+        Both of the libraries the link cannot do without are probed, not one:
+        a half-generated directory is exactly the case a bare existence check
+        gets wrong. fetch-vclibs.sh renames the directory into place only when
+        complete, and this checks both anyway. build.sh re-checks at link time
+        with an error that names the fix; this probe only decides whether /MD
+        is honoured, so a miss falls back to the static runtime silently —
+        which is the pre-store-CRT behaviour, not a new failure."""
+        arch = VCLIBS_ARCH_DIR.get(
+            self.evaluator.properties.get("Platform", "").lower()
+        )
+        if arch is None:
+            return False
+        root = os.environ.get("UWP_VCLIBS_ROOT") or VCLIBS_ROOT_DEFAULT
+        directory = os.path.join(root, "lib", arch)
+        return all(
+            os.path.isfile(os.path.join(directory, library))
+            for library in ("vcruntime140_app.lib", "msvcp140_app.lib")
+        )
 
     def _link(self):
         settings = dict(self.evaluator.link)
@@ -960,6 +996,7 @@ class Description:
             "std": self.std,
             "pch": self.pch,
             "options": self.compile_flags,
+            "store_crt": self.store_crt,
             "link": self.link,
             "references": self.references,
             "idl": self.idl,
@@ -987,6 +1024,8 @@ class Description:
             lines.append("--static-lib")
         else:
             lines.append("--uwp")
+            if self.store_crt:
+                lines.append("--store-crt")
             for directory in self.link["libpath"]:
                 lines += ["--link-arg", f"/libpath:{directory}"]
             for library in self.link["libs"]:
@@ -1009,6 +1048,9 @@ class Description:
             value = value[step]
         if value is None:
             return []
+        if isinstance(value, bool):
+            # bash compares these against literal true/false, not Python's.
+            return ["true" if value else "false"]
         if isinstance(value, list):
             return [
                 "\t".join(str(v) for v in item.values())
