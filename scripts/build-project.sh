@@ -136,6 +136,44 @@ type="$(field "$project" type)"
 # something else installs and then fails to launch.
 executable="$(field "$project" executable)"
 
+# /MD through the store CRT means the loader will want the Microsoft.VCLibs
+# framework at launch. Checked now rather than after a ten-minute compile, and
+# refused rather than repaired: the manifest is the project's, and nothing here
+# rewrites it. The check matters because nothing later gives it: the Device
+# Portal registers a package with unmet dependencies without complaint, and the
+# loader then fails the launch as 0x80070002, naming nothing.
+store_crt="$(field "$project" store_crt)" || die "cannot read store_crt from $project"
+if [[ "$store_crt" == "true" ]]; then
+	manifest="$(field "$project" manifest)" || die "cannot read manifest from $project"
+	[[ -n "$manifest" ]] || die "$project declares no AppxManifest"
+	python3 - "$(dirname "$project")/$manifest" <<'PYEOF' ||
+import sys
+import xml.etree.ElementTree as ET
+
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+except (ET.ParseError, OSError) as error:
+    sys.exit(f"{sys.argv[1]}: not readable as XML: {error}")
+sys.exit(
+    0
+    if any(
+        element.tag.split("}")[-1] == "PackageDependency"
+        and element.get("Name") == "Microsoft.VCLibs.140.00"
+        for element in root.iter()
+    )
+    else 1
+)
+PYEOF
+		die "the executable will import VCRUNTIME140_APP.dll, which the
+  Microsoft.VCLibs.140.00 framework provides, and $manifest does not declare
+  it. Add, inside <Dependencies>:
+    <PackageDependency Name=\"Microsoft.VCLibs.140.00\" MinVersion=\"14.0.0.0\"
+        Publisher=\"CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US\" />
+  The framework must also be installed on the device: the Device Portal
+  registers a package with unmet dependencies without complaint, and the
+  loader then fails the launch as 0x80070002."
+fi
+
 prepare_layout "$out" "$executable"
 
 build="${UWP_OBJ_DIR:-$out.build}"
@@ -229,6 +267,12 @@ build_project() { # build_project <project> <output path> <static|application>
 		arguments+=(--static-lib)
 	else
 		arguments+=(--uwp)
+		# read afresh for this project, like every field: only an application
+		# links a CRT, so a static reference never carries the flag.
+		local wants_store_crt
+		wants_store_crt="$(field "$vcxproj" store_crt)" ||
+			die "cannot read store_crt from $vcxproj"
+		[[ "$wants_store_crt" != "true" ]] || arguments+=(--store-crt)
 		# The projection comes from the project's own .idl: the sources that
 		# implement the application class do not compile without the generated
 		# headers, and the winmd has to ship inside the package.
