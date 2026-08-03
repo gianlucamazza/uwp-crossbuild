@@ -10,7 +10,10 @@
 #                  selects the compiler target and library directories: the
 #                  platform decides both which MSBuild conditions hold and what
 #                  the objects are, and answering only the first would build
-#                  x64 code under ARM64 settings without a word.
+#                  x64 code under ARM64 settings without a word. Left at its
+#                  default it yields to UWP_TARGET/UWP_ARCH_DIR from the
+#                  environment; typed out, it refuses an environment that
+#                  contradicts it.
 #     --property   MSBuild's /p:, repeatable. A project's own switches live
 #                  here — a backend selector, a SKU flag — and one of them can
 #                  decide whether a ProjectReference exists at all.
@@ -42,6 +45,7 @@ project=""
 out=""
 config="Release"
 platform="x64"
+platform_explicit=""
 properties=()
 no_pri=0
 no_restore=0
@@ -52,7 +56,7 @@ while [[ $# -gt 0 ]]; do
 	--project) value "$1" $# "${2:-}" && project="$2" && shift 2 ;;
 	--out) value "$1" $# "${2:-}" && out="$2" && shift 2 ;;
 	--config) value "$1" $# "${2:-}" && config="$2" && shift 2 ;;
-	--platform) value "$1" $# "${2:-}" && platform="$2" && shift 2 ;;
+	--platform) value "$1" $# "${2:-}" && platform="$2" && platform_explicit=explicit && shift 2 ;;
 	--property) value "$1" $# "${2:-}" && properties+=(--property "$2") && shift 2 ;;
 	--no-pri) no_pri=1 && shift ;;
 	--no-restore) no_restore=1 && shift ;;
@@ -73,7 +77,7 @@ done
 # parent would slip a project past them and under prepare_layout's clearing.
 project="$(cd "$(dirname "$project")" && pwd -P)/$(basename "$project")"
 
-platform_env "$platform"
+platform_env "$platform" $platform_explicit
 
 read_vcxproj=("$here/read-vcxproj.py" --config "$config" --platform "$platform"
 	${properties[@]+"${properties[@]}"})

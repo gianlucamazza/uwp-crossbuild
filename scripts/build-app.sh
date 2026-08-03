@@ -6,7 +6,9 @@
 #                [--language TAG] [--no-pri]
 #
 #     --platform   what to compile for (default x64). Sets UWP_TARGET and
-#                  UWP_ARCH_DIR; explicit values in the environment still win.
+#                  UWP_ARCH_DIR. Left at its default it yields to those
+#                  variables from the environment; typed out, it refuses an
+#                  environment that contradicts it.
 #     --copy DIR   copy the contents of DIR into the layout (repeatable). This
 #                  is how precompiled third-party DLLs get into the package: a
 #                  native NuGet package's runtimes/win-x64/native — or its
@@ -45,12 +47,13 @@ copy_dirs=()
 language=""
 jobs=""
 platform="x64"
+platform_explicit=""
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 	-h | --help) usage ;;
 	--project) value "$1" $# "${2:-}" && project="$2" && shift 2 ;;
-	--platform) value "$1" $# "${2:-}" && platform="$2" && shift 2 ;;
+	--platform) value "$1" $# "${2:-}" && platform="$2" && platform_explicit=explicit && shift 2 ;;
 	--out) value "$1" $# "${2:-}" && out="$2" && shift 2 ;;
 	--name) value "$1" $# "${2:-}" && name="$2" && shift 2 ;;
 	--copy) value "$1" $# "${2:-}" && copy_dirs+=("$2") && shift 2 ;;
@@ -70,15 +73,36 @@ for dir in ${copy_dirs[@]+"${copy_dirs[@]}"}; do
 	[[ -d "$dir" ]] || die "--copy: no such directory: $dir"
 done
 
-platform_env "$platform"
+platform_env "$platform" $platform_explicit
 
 # The manifest is copied into the layout verbatim, so its architecture has to
-# agree with the platform — same refusal read-vcxproj.py makes for a .vcxproj,
-# mirrored here for a project directory. neutral and absent stay legal.
-case "$platform" in x64) expected="x64" ;; ARM64) expected="arm64" ;; esac
-declared=$(sed -n 's/.*ProcessorArchitecture="\([^"]*\)".*/\1/p' \
-	"$project/AppxManifest.xml" | head -1)
-if [[ -n "$declared" && "${declared,,}" != neutral && "${declared,,}" != "$expected" ]]; then
+# agree with what is actually compiled — same refusal read-vcxproj.py makes for
+# a .vcxproj, mirrored here for a project directory. Compared against the
+# effective UWP_TARGET, not --platform: a defaulted --platform yields to the
+# environment, and it is the target that names the executable's architecture.
+# A third architecture has no row to compare against, so nothing is checked.
+# neutral and absent stay legal. Parsed as XML, not grepped: a single-quoted
+# attribute or a multi-line <Identity> would slip past a pattern and ship a
+# mismatched package.
+case "$UWP_TARGET" in
+x86_64-*) expected="x64" ;;
+aarch64-*) expected="arm64" ;;
+*) expected="" ;;
+esac
+declared=$(
+	python3 - "$project/AppxManifest.xml" <<'PYEOF'
+import sys
+import xml.etree.ElementTree as ET
+
+try:
+    root = ET.parse(sys.argv[1]).getroot()
+except ET.ParseError as error:
+    sys.exit(f"AppxManifest.xml is not well-formed XML: {error}")
+identity = root.find("{*}Identity")
+print(identity.get("ProcessorArchitecture", "") if identity is not None else "")
+PYEOF
+) || die "cannot read $project/AppxManifest.xml"
+if [[ -n "$expected" && -n "$declared" && "${declared,,}" != neutral && "${declared,,}" != "$expected" ]]; then
 	die "AppxManifest.xml declares ProcessorArchitecture=\"$declared\", and this
   is an $expected build. Set the manifest's Identity/@ProcessorArchitecture to
   \"$expected\", or build with the platform the manifest names."

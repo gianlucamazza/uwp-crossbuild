@@ -72,16 +72,28 @@ fetch() { # fetch <url> <destination>
 }
 
 # The platform names both halves of a build: the conditions the evaluator
-# takes and the target build.sh compiles for. An explicit UWP_TARGET/
-# UWP_ARCH_DIR in the environment still wins, as everywhere else. A third
-# architecture is one row here plus the dlltool machine case in build.sh,
-# both of which refuse anything they do not name.
-platform_env() { # platform_env <x64|ARM64>
+# takes and the target build.sh compiles for. A --platform left at its default
+# yields to UWP_TARGET/UWP_ARCH_DIR from the environment — the workflow that
+# predates the flag, and the only route to a third architecture. A --platform
+# actually typed is intent, and an environment that contradicts it would
+# validate one architecture's manifest while compiling another's executable:
+# refused, naming both sides. A third architecture is one row here plus the
+# dlltool machine case in build.sh, both of which refuse anything they do not
+# name.
+platform_env() { # platform_env <x64|ARM64> [explicit]
+	local target arch_dir
 	case "$1" in
-	x64) export UWP_TARGET="${UWP_TARGET:-x86_64-pc-windows-msvc}" UWP_ARCH_DIR="${UWP_ARCH_DIR:-x86_64}" ;;
-	ARM64) export UWP_TARGET="${UWP_TARGET:-aarch64-pc-windows-msvc}" UWP_ARCH_DIR="${UWP_ARCH_DIR:-aarch64}" ;;
+	x64) target=x86_64-pc-windows-msvc arch_dir=x86_64 ;;
+	ARM64) target=aarch64-pc-windows-msvc arch_dir=aarch64 ;;
 	*) die "--platform $1 is not one this can build: x64 or ARM64" ;;
 	esac
+	if [[ "${2:-}" == explicit ]]; then
+		[[ "${UWP_TARGET:-$target}" == "$target" && "${UWP_ARCH_DIR:-$arch_dir}" == "$arch_dir" ]] ||
+			die "--platform $1 means UWP_TARGET=$target UWP_ARCH_DIR=$arch_dir, and the
+  environment says UWP_TARGET=${UWP_TARGET:-$target} UWP_ARCH_DIR=${UWP_ARCH_DIR:-$arch_dir}.
+  Drop the override, or drop --platform and let the override choose."
+	fi
+	export UWP_TARGET="${UWP_TARGET:-$target}" UWP_ARCH_DIR="${UWP_ARCH_DIR:-$arch_dir}"
 }
 
 # A layout is the complete contents of a package: everything in it ships, and
