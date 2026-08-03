@@ -5,7 +5,7 @@
 #
 #     . "$here/common.sh"
 #
-# Four kinds of thing live here, and nothing else does. Anything specific to
+# Five kinds of thing live here, and nothing else does. Anything specific to
 # one script belongs in that script, where its reasons are.
 #
 #   the shape of an error      die, and the argument checks that produce one
@@ -22,7 +22,7 @@
 #                              built and what UWP_TARGET/UWP_ARCH_DIR each
 #                              means, which both front doors have to agree on
 #
-# That last one is why this file exists at all. build-app.sh and
+# The layout doctrine is why this file exists at all. build-app.sh and
 # build-project.sh had a copy each of "clear a stale layout, but only when it is
 # recognisably one", and within a day they disagreed about what counts as
 # recognisable — same message, different behaviour, and only one of them let a
