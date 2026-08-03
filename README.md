@@ -311,7 +311,7 @@ invalid`, which is true — that is not legal XML — but says nothing about
     store import libraries, because modern MSVC no longer ships them. Linked
     `/MD` here, the executable imports the desktop `VCRUNTIME140.dll`, which
     does not resolve inside the container: the package installs, and activation
-    fails as `0x80270300`. Observed end to end on Xbox OS 26100.8866; the same
+    fails as `0x80270300`. Observed end-to-end on Xbox OS 26100.8866; the same
     application statically linked launches. So `read-vcxproj.py` maps
     `MultiThreadedDLL`/`MultiThreadedDebugDLL` to their static counterparts
     whenever `AppContainerApplication` is true — the one place it deliberately
