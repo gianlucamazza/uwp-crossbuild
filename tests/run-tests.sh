@@ -840,5 +840,114 @@ else
 	rm -rf "$tmp"
 fi
 
+echo "pe-import-audit.sh"
+audit="$scripts/pe-import-audit.sh"
+tmp="$(mktemp -d)"
+touch "$tmp/app.exe"
+# The audit reads the PE only through llvm-readobj, so a stub on PATH turns
+# canned reader output into a fixture — no toolchain, no real PE. The stub
+# speaks the reader's actual format ("Name:", "Symbol: name (hint)",
+# subsystem fields), which is exactly what the parsing under test has to match.
+mkdir -p "$tmp/bin"
+cat >"$tmp/bin/llvm-readobj" <<'EOF'
+#!/bin/sh
+case "$1" in
+--file-headers) cat "${AUDIT_HEADERS:?}" ;;
+--coff-imports) cat "${AUDIT_IMPORTS:?}" ;;
+esac
+EOF
+chmod +x "$tmp/bin/llvm-readobj"
+cat >"$tmp/h_clean" <<'EOF'
+  MajorSubsystemVersion: 6
+  MinorSubsystemVersion: 2
+  DLLCharacteristics [ (0x1100)
+    IMAGE_DLL_CHARACTERISTICS_APPCONTAINER (0x1000)
+  ]
+EOF
+cat >"$tmp/h_600" <<'EOF'
+  MajorSubsystemVersion: 6
+  MinorSubsystemVersion: 0
+  DLLCharacteristics [ (0x1100)
+    IMAGE_DLL_CHARACTERISTICS_APPCONTAINER (0x1000)
+  ]
+EOF
+cat >"$tmp/h_nobit" <<'EOF'
+  MajorSubsystemVersion: 6
+  MinorSubsystemVersion: 2
+  DLLCharacteristics [ (0x100)
+  ]
+EOF
+cat >"$tmp/i_clean" <<'EOF'
+Import {
+  Name: api-ms-win-core-com-l1-1-0.dll
+  Symbol: CoInitializeEx (12)
+}
+Import {
+  Name: KERNELBASE.dll
+  Symbol: EncodePointer (612)
+}
+EOF
+cat >"$tmp/i_reg" <<'EOF'
+Import {
+  Name: ADVAPI32.dll
+  Symbol: RegOpenKeyExW (700)
+}
+EOF
+cat >"$tmp/i_msvcp" <<'EOF'
+Import {
+  Name: msvcp140.dll
+  Symbol: ?_Facet_Register@std@@YAXPEAV_Facet_base@1@@Z (1)
+}
+EOF
+cat >"$tmp/i_k32" <<'EOF'
+Import {
+  Name: KERNEL32.dll
+  Symbol: GetTickCount64 (500)
+}
+EOF
+with_pe() { # with_pe <headers fixture> <imports fixture> <audit args...>
+	local headers="$1" imports="$2"
+	shift 2
+	env PATH="$tmp/bin:$PATH" AUDIT_HEADERS="$tmp/$headers" \
+		AUDIT_IMPORTS="$tmp/$imports" "$audit" "$@" "$tmp/app.exe"
+}
+succeeds_with "a clean PE passes" "pe-import-audit: OK" \
+	with_pe h_clean i_clean
+fails_with "a banlist symbol is fatal" "FORBIDDEN symbol: RegOpenKeyExW" \
+	with_pe h_clean i_reg
+# The DLL name in the PE is whatever the import library carried, so case must
+# not hide a desktop CRT.
+fails_with "a desktop CRT DLL is fatal whatever its case" "MSVCP140.dll" \
+	with_pe h_clean i_msvcp
+fails_with "raw KERNEL32.dll is fatal by default" "FORBIDDEN dll: KERNEL32.dll" \
+	with_pe h_clean i_k32
+succeeds_with "--allow-kernel32 keeps it a smell, not a failure" "pe-import-audit: OK" \
+	with_pe h_clean i_k32 --allow-kernel32
+fails_with "subsystem 6.00 is fatal" "FORBIDDEN subsystem version: 6.00" \
+	with_pe h_600 i_clean
+fails_with "a missing AppContainer bit is fatal" "APPCONTAINER" \
+	with_pe h_nobit i_clean
+# Apiset names vary by SDK, so the banlist extends without editing the script.
+fails_with "UWP_AUDIT_FORBID extends the banlist" "FORBIDDEN symbol: CoInitializeEx" \
+	env UWP_AUDIT_FORBID="CoInitializeEx" PATH="$tmp/bin:$PATH" \
+	AUDIT_HEADERS="$tmp/h_clean" AUDIT_IMPORTS="$tmp/i_clean" \
+	"$audit" "$tmp/app.exe"
+# "Cannot audit" is exit 2, never the verdict's exit 1: a PE the reader cannot
+# open must not read as a clean or a forbidden one.
+fails_with "an unreadable PE is 'cannot audit', not a verdict" "could not read PE headers" \
+	env PATH="$tmp/bin:$PATH" AUDIT_HEADERS=/dev/null AUDIT_IMPORTS="$tmp/i_clean" \
+	"$audit" "$tmp/app.exe"
+fails_with "a missing file says so" "no such file" "$audit" /nonexistent/app.exe
+fails_with "no PE at all is an error, not a verdict" "usage:" "$audit"
+rm -rf "$tmp"
+# Both front doors run the gate on the PE they just linked, fail-closed with
+# the documented opt-out.
+for door in build-app.sh build-project.sh; do
+	assert "$door runs the audit after the link" "no pe-import-audit call" \
+		grep -q 'pe-import-audit.sh" --allow-kernel32' "$scripts/$door"
+	assert "and $door has the opt-out" "no UWP_SKIP_IMPORT_AUDIT gate" \
+		grep -q 'UWP_SKIP_IMPORT_AUDIT' "$scripts/$door"
+done
+
 printf '\n%d passed, %d failed, %d skipped\n' "$passed" "$failed" "$skipped"
 [[ $failed -eq 0 ]]

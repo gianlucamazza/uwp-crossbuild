@@ -11,10 +11,13 @@ a specific version, and knowing which is the whole point of writing it down.
 
 ### Added
 
-- **`scripts/pe-import-audit.sh`** — fail a PE that imports symbols known to
-  break Xbox AppContainer activation (registry, `SetThreadAffinityMask`,
-  desktop `MSVCP140`/`VCRUNTIME140`, optional raw `KERNEL32.dll`). Used as a
-  pre-deploy canary for filesystem-heavy UWP apps (xllama). Gotcha n°22.
+- **`scripts/pe-import-audit.sh`** — fail a PE that would install and then
+  refuse Xbox AppContainer activation (`0x8027025b`): banlist symbols
+  (registry, `SetThreadAffinityMask`; `UWP_AUDIT_FORBID` extends the list),
+  desktop `MSVCP140`/`VCRUNTIME140`, subsystem below 6.02, a missing
+  AppContainer bit, and — unless `--allow-kernel32` — raw `KERNEL32.dll`.
+  `build-app.sh` and `build-project.sh` run it after every link
+  (`--allow-kernel32`; `UWP_SKIP_IMPORT_AUDIT=1` opts out). Gotcha n°22.
 
 ### Fixed
 
@@ -95,7 +98,7 @@ a specific version, and knowing which is the whole point of writing it down.
   list, which becomes "Nineteen things".
 - **The default SDK version is pinned once, in `common.sh`.** It was three
   literal copies — `fetch-sdk.sh`, `gen-projection.sh`, `wine-tool.sh` — and
-  fetch-sdk.sh *writes* the layout at that version while the other two *read*
+  fetch-sdk.sh _writes_ the layout at that version while the other two _read_
   it back, so a copy that drifted would fail as "tool not found", naming
   neither copy. `UWP_SDK_VERSION` still overrides it everywhere; a test now
   holds the literal to one file.
