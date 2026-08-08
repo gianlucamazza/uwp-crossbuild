@@ -170,6 +170,7 @@ if [[ $uwp -eq 1 ]]; then
 		# bare /subsystem:windows defaults to 6.00 and has been observed on
 		# crossbuilt images that install but refuse activation as 0x8027025b
 		# while a CI MSVC PE of the same app (6.02) launches.
+		# shellcheck disable=SC2054  # the comma belongs to the linker argument
 		link_args+=(/appcontainer /subsystem:windows,6.02)
 	fi
 fi
