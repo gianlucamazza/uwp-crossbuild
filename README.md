@@ -317,16 +317,14 @@ invalid`, which is true — that is not legal XML — but says nothing about
     desktop libraries instead, the executable imports `VCRUNTIME140.dll`,
     which does not resolve inside the container: the package installs, and
     activation fails as `0x80270300` (observed end-to-end on Xbox OS
-    26100.8866; the same application statically linked launches). Two ways
-    out, and `read-vcxproj.py` picks between them by what is on disk:
-    `fetch-vclibs.sh` generates the missing import libraries from the
-    framework's own DLLs, and with them in place `/MD` is honoured —
-    `build.sh --store-crt` shuts out `msvcprt.lib`/`vcruntime.lib` and links
-    the generated `*_app` set, `libcpmt.lib` last, producing imports
-    identical to a Visual Studio build's. Without them, the DLL runtimes are
-    mapped to their static counterparts whenever `AppContainerApplication`
-    is true — still the one place the evaluator deliberately changes what
-    MSBuild would do rather than mirroring or refusing it.
+    26100.8866; the same application statically linked launches). Default
+    here: map the DLL runtimes to their **static** counterparts whenever
+    `AppContainerApplication` is true (`/MT`) — still the one place the
+    evaluator deliberately changes what MSBuild would do rather than
+    mirroring or refusing it. Opt-in store `/MD`: set `UWP_STORE_CRT=1` and
+    run `fetch-vclibs.sh` so the generated `*_app` import libraries exist;
+    `build.sh --store-crt` then shuts out `msvcprt.lib`/`vcruntime.lib` and
+    links the `*_app` set. See n°21 for what that path still cannot do.
 
 20. **The Device Portal registers a package whose dependencies are missing.**
     A store-CRT build needs the `Microsoft.VCLibs.140.00` framework declared
@@ -337,6 +335,35 @@ invalid`, which is true — that is not legal XML — but says nothing about
     store-CRT build whose manifest omits the dependency (printing the exact
     element to paste), and `run-on-device.sh` warns after install when the
     device does not list a framework the manifest names.
+
+21. **`libcpmt.lib` is MT and must not close store-`/MD` gaps.** The static
+    C++ archive from xwin is built as `RuntimeLibrary=MT_StaticRelease`.
+    `msvcp140_app.dll` does **not** export the STL static helpers
+    (`__std_fs_*`, some `__std_find_*`, `_Thrd_sleep_for`, …) that
+    `std::filesystem` and related TU emit. Pulling those members from
+    `libcpmt` into a `/MD` image fails under LLD (and MSVC LNK2038) with
+    `FAILIFMISMATCH` on `RuntimeLibrary`. Small samples (hello-uwp) never
+    reference those symbols, so a recipe that appended `libcpmt` last looked
+    complete until a filesystem-heavy project (xllama) hit the wall. Default
+    remains `/MT` in the container (n°19). Store `/MD` (`UWP_STORE_CRT=1`) is
+    for apps fully satisfied by the `*_app` import libs. Do not package
+    desktop `vcruntime140.dll` from Wine as a substitute for either path
+    except as an explicit Dev Mode emergency.
+
+22. **Filesystem-heavy UWP apps (xllama) can link and still refuse activation
+    (`0x8027025b`) if the PE imports AppContainer-forbidden symbols.** Observed
+    on Series S: crossbuilt xllama imported `RegOpenKeyExA` /
+    `SetThreadAffinityMask` (from unguarded ggml-cpu desktop paths) plus raw
+    `KERNEL32.dll`, while a CI MSVC image of the same app did not and launched.
+    Two contributing mistakes on the consumer side: (1) not applying
+    AppContainer source guards before the build; (2) relying only on
+    `WINAPI_FAMILY` — this toolchain deliberately does **not** set
+    `/DWINAPI_FAMILY=WINAPI_FAMILY_APP` (n° below on cstdlib), so
+    `WINAPI_FAMILY_PARTITION(DESKTOP)` stays true and desktop code is compiled
+    unless the project defines its own UWP macro (e.g. xllama's `XLLAMA_UWP=1`).
+    **Gate:** `scripts/pe-import-audit.sh path/to/app.exe` fails closed on a
+    banlist (registry, affinity, desktop CRT DLLs). CI MSVC PEs pass; broken
+    crossbuild PEs fail before you waste a deploy cycle.
 
 ## Layout
 
@@ -354,6 +381,7 @@ scripts/read-vcxproj.py      a Visual Studio project -> what it builds, as JSON
 scripts/restore-nuget.sh     packages.config -> packages/, from nuget.org
 scripts/build-project.sh     a .vcxproj -> a layout, references and DLLs included
 scripts/run-on-device.sh     a layout -> the console: packed, signed, installed, launched
+scripts/pe-import-audit.sh   PE import banlist gate (Xbox AppContainer canaries)
 scripts/common.sh            sourced by all of them: errors, downloads, layout rules
 include/msvc-compat.h        force-included: what clang needs that MSVC assumes
 include/appcontainer-pointers.def  EncodePointer/DecodePointer from KERNELBASE (n°18)

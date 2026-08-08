@@ -11,24 +11,36 @@ a specific version, and knowing which is the whole point of writing it down.
 
 ### Added
 
-- **`/MD` works in the app container, through the store CRT.** The new
-  `fetch-vclibs.sh` generates the import libraries modern MSVC no longer
-  ships, out of the `Microsoft.VCLibs` framework appx itself (a file you
-  point it at, or a download it refuses without an explicit
-  `--accept-license`): export tables read with `llvm-readobj`, `.def`
-  written, `.lib` generated with `llvm-dlltool`. With them in place the
-  evaluator honours `MultiThreadedDLL` instead of overriding it, and
-  `build.sh --store-crt` links the `*_app` set — `libcpmt.lib` last, for the
-  STL's static helpers the VCLibs DLLs do not export — producing imports
-  identical to a Visual Studio build's, per the recipe proven on hardware in
-  issue #7. Without them the static override stands unchanged.
+- **`scripts/pe-import-audit.sh`** — fail a PE that imports symbols known to
+  break Xbox AppContainer activation (registry, `SetThreadAffinityMask`,
+  desktop `MSVCP140`/`VCRUNTIME140`, optional raw `KERNEL32.dll`). Used as a
+  pre-deploy canary for filesystem-heavy UWP apps (xllama). Gotcha n°22.
+
+### Fixed
+
+- **Store `/MD` no longer appends `libcpmt.lib`.** That archive is MT; linking
+  it into a `/MD` image fails LLD/`FAILIFMISMATCH` as soon as a TU needs
+  `__std_fs_*` (or related STL static helpers that `msvcp140_app` does not
+  export). hello-uwp never pulled those members, so the old "libcpmt last"
+  recipe looked complete. Default app-container runtime stays **`/MT`**;
+  store `/MD` is **opt-in** via `UWP_STORE_CRT=1` (plus `fetch-vclibs.sh`)
+  for apps fully covered by the `*_app` import libs. README gotcha 21.
+  Emergency only: `UWP_STORE_CRT_LIBCPMT=1` restores the old last-token
+  behaviour with a warning.
+
+### Added
+
+- **`fetch-vclibs.sh` generates the store CRT import libraries** modern MSVC
+  no longer ships, out of the `Microsoft.VCLibs` framework appx (point
+  `--appx` at a local package, or download with an explicit
+  `--accept-license`): export tables via `llvm-readobj`, `.def` written,
+  `.lib` via `llvm-dlltool`. With them in place and `UWP_STORE_CRT=1`,
+  `build.sh --store-crt` links the `*_app` set (no `libcpmt`). Without
+  them — or without the opt-in — the static `/MT` override stands.
   `build-project.sh` refuses a store-CRT build whose manifest does not
   declare the `Microsoft.VCLibs.140.00` dependency, printing the element to
   paste, and `run-on-device.sh` warns after install when the device does not
-  list a framework the manifest names — the Device Portal registers a
-  package with unmet dependencies without complaint, and the loader then
-  fails the launch as `0x80070002`, naming nothing. The gotcha list grows
-  that entry and becomes "Twenty things".
+  list a framework the manifest names. Gotcha list: n°19–21.
 
 - **Four settings the default Visual Studio template emits are now understood**
   instead of refused: `RuntimeTypeInfo` (`/GR`, `/GR-`), the Release linker's
