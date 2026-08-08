@@ -161,13 +161,19 @@ full_name="$("${portal[@]}" --list | awk -F'\t' -v n="$identity" '$0 ~ "^"n"_" {
 # and the loader then fails the launch as 0x80070002, naming nothing. A warning
 # rather than a refusal — the device list is best-effort, and a framework can
 # arrive by other roads between now and the launch.
+# A dependency absent from the listing is only a *maybe*: the Xbox package
+# list hides framework packages — Microsoft.VCLibs never appears in it even
+# while Dev Home holds it open (verified 2026-08-08: a standalone VCLibs
+# install fails 0x80073D02 "in use by Dev Home" on a console whose list shows
+# no VCLibs at all). So this cannot fail closed, and says what it knows.
 installed="$("${portal[@]}" --list)"
 while read -r dependency; do
 	[[ -n "$dependency" ]] || continue
 	awk -F'\t' -v n="$dependency" '$0 ~ "^"n"_" {found=1} END {exit !found}' <<<"$installed" ||
-		echo "warning: the manifest depends on $dependency and the device does not
-  list it — the launch will fail as 0x80070002, naming nothing, until the
-  framework is installed" >&2
+		echo "note: the manifest depends on $dependency, which the device does not
+  list — but the Xbox hides framework packages from this listing, so it may
+  well be installed. Only if the launch fails as 0x80070002 is the framework
+  actually missing; install its .appx alongside the package then." >&2
 done < <(manifest_attrs "$manifest" PackageDependency Name)
 
 if [[ $launch -eq 1 ]]; then

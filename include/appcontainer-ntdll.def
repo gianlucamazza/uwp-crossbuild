@@ -1,0 +1,20 @@
+; The x64 unwinder's imports, resolved from ntdll.dll by name.
+;
+; xwin's kernel32.lib routes RtlCaptureContext, RtlLookupFunctionEntry and
+; RtlVirtualUnwind through api-ms-win-core-rtlsupport-l1-1-0.dll, an apiset
+; the Xbox app container does not provide: the package installs and the
+; loader refuses activation (observed as 0x80270300 / 0x8027015B on xllama,
+; Xbox OS 26100.8866). KERNELBASE cannot take them — the console's own
+; KERNELBASE export table (read from a crash dump) does not list the family.
+; ntdll.dll exports all three, is loaded in every process, app container
+; included, and is not apiset-versioned. The exception machinery reaches for
+; them in any x64 image with unwind tables — no application code involved.
+;
+; build.sh turns this into an import library with llvm-dlltool and places it
+; beside appcontainer-pointers.lib, before kernel32.lib, so these names
+; resolve here and everything else stays where xwin put it.
+LIBRARY ntdll.dll
+EXPORTS
+    RtlCaptureContext
+    RtlLookupFunctionEntry
+    RtlVirtualUnwind

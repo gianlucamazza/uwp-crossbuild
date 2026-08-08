@@ -208,6 +208,28 @@ else
 fi
 assert "gen-msvcprt-app-static.sh exists" "missing helper generator" \
 	test -x "$scripts/gen-msvcprt-app-static.sh"
+# The two reroute .defs (gotcha 23): each name must resolve from a DLL that
+# really exports it on the console — Rtl* are ntdll's, never KERNELBASE's.
+assert "the KERNELBASE reroute def exists" "missing appcontainer-pointers.def" \
+	test -f "$scripts/../include/appcontainer-pointers.def"
+assert "the ntdll reroute def exists" "missing appcontainer-ntdll.def" \
+	test -f "$scripts/../include/appcontainer-ntdll.def"
+assert "the Rtl unwinder family stays out of the KERNELBASE def" "Rtl in pointers.def" \
+	test "$(grep -c '^    Rtl' "$scripts/../include/appcontainer-pointers.def")" -eq 0
+assert "and lives in the ntdll def" "RtlCaptureContext missing" \
+	grep -q '^    RtlCaptureContext' "$scripts/../include/appcontainer-ntdll.def"
+assert "build.sh generates both reroute archives" "def loop missing" \
+	grep -q 'appcontainer-pointers appcontainer-ntdll' "$scripts/build.sh"
+assert "and the Makefile installs both defs" "ntdll def not installed" \
+	grep -q 'appcontainer-ntdll.def' "$scripts/../Makefile"
+# The map is the only symbolication a console crash dump gets (gotcha 24).
+# shellcheck disable=SC2016  # the literal $objdir in build.sh is the pattern
+assert "every link writes its map into the objdir" "no /map in the link" \
+	grep -q '/map:\$objdir/link.map' "$scripts/build.sh"
+# make install touches msvc-compat.h, which is force-included into the PCH.
+# shellcheck disable=SC2016  # the literal $compat in build.sh is the pattern
+assert "a newer msvc-compat.h invalidates the PCH" "compat not in the PCH check" \
+	grep -q '"\$compat" -nt "\$pchfile"' "$scripts/build.sh"
 rm -rf "$tmp"
 
 echo "fetch-vclibs.sh guards"

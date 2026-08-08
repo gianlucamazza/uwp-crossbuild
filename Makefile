@@ -44,6 +44,7 @@ install:
 	install -m 0755 $(addprefix scripts/,$(SCRIPTS)) "$(DESTDIR)$(LIBDIR)/scripts/"
 	install -m 0644 $(addprefix scripts/,$(LIBS)) "$(DESTDIR)$(LIBDIR)/scripts/"
 	install -m 0644 include/msvc-compat.h include/appcontainer-pointers.def \
+	           include/appcontainer-ntdll.def \
 	           "$(DESTDIR)$(LIBDIR)/include/"
 	install -m 0644 README.md CHANGELOG.md LICENSE "$(DESTDIR)$(DOCDIR)/"
 	install -m 0644 docs/*.md "$(DESTDIR)$(DOCDIR)/"

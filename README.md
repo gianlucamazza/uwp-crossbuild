@@ -311,10 +311,11 @@ invalid`, which is true — that is not legal XML — but says nothing about
     not found" without saying which file. No application code is involved: the
     static CRT reaches for the pair in its `/O2` initialisation paths, so the
     same project can launch as a debug build and die as a release one. `--uwp`
-    links `include/appcontainer-pointers.def` (as an import library, generated
-    at build time) ahead of `kernel32.lib`, rerouting exactly those two names
-    to `KERNELBASE.dll`, which exports them and is present in every
-    app-container process.
+    links `include/appcontainer-pointers.def` and `include/appcontainer-ntdll.def`
+    (as import libraries, generated at build time) ahead of `kernel32.lib`,
+    rerouting a short list of names to DLLs that really export them and are
+    present in every app-container process — see n°23 for how the list grew
+    and how each name's destination was verified.
 
 19. **`/MD` in the app container needs the store CRT, and Microsoft no longer
     ships its import libraries.** MSBuild's UWP toolset satisfies the DLL
@@ -371,6 +372,36 @@ invalid`, which is true — that is not legal XML — but says nothing about
     (with `--allow-kernel32`; `UWP_SKIP_IMPORT_AUDIT=1` opts out,
     `UWP_AUDIT_FORBID` extends the banlist).
 
+23. **The SDK routes more names through apisets the console does not have —
+    and `KERNELBASE.dll` cannot take them all.** Beyond n°18's pair, a
+    crossbuilt PE of a real project imported `api-ms-win-core-file-l1-2-2`
+    (`AreFileApisANSI`, reached by the MD static STL's filesystem objects),
+    `api-ms-win-core-processthreads-l1-1-1` (`IsProcessorFeaturePresent`) and
+    `api-ms-win-core-rtlsupport-l1-1-0` (the unwinder's `RtlCaptureContext` /
+    `RtlLookupFunctionEntry` / `RtlVirtualUnwind`) — and refused activation,
+    while the CI MSVC PE of the same app imports none of them. The first two
+    names go to `KERNELBASE.dll`; the `Rtl*` trio does **not** — the console's
+    own KERNELBASE export table (read out of a crash dump's mapped module, the
+    only authority: `kernelbase.lib` understates the DLL) lacks the family, and
+    a PE that asks KERNELBASE for it fails activation as `0x8027015B`. They go
+    to `ntdll.dll`, which exports all three, is loaded in every process and is
+    not apiset-versioned — verified launching on the console. Hence two `.def`
+    files, one per providing DLL.
+
+24. **The Xbox package list hides frameworks, and a crash dump is the only
+    debugger you get.** `Microsoft.VCLibs` never appears in the Device
+    Portal's package listing, even while Dev Home holds it open — do not read
+    its absence as "not installed" (`run-on-device.sh` no longer does), and do
+    not read a standalone framework install's `0x80073D02` ("in use by Dev
+    Home") as failure: it means the framework is already there. When a package
+    installs and refuses to start, enable per-package crash dumps
+    (`POST /api/debug/dump/usermode/crashcontrol?packageFullName=…` — capital
+    N, `Content-Length: 0`, CSRF cookie handshake; re-enable after every
+    reinstall), launch, and fetch the `.dmp`. `build.sh` writes the linker map
+    to `<objdir>/link.map` at every link because that map is the only
+    symbolication there is: the Xbox flight-build PDBs are not on any public
+    symbol server.
+
 ## Layout
 
 ```
@@ -391,7 +422,8 @@ scripts/pe-import-audit.sh   activation-contract gate: imports, subsystem, AppCo
 scripts/gen-msvcprt-app-static.sh  MD static STL helpers from msvcprt.lib (store /MD)
 scripts/common.sh            sourced by all of them: errors, downloads, layout rules
 include/msvc-compat.h        force-included: what clang needs that MSVC assumes
-include/appcontainer-pointers.def  EncodePointer/DecodePointer from KERNELBASE (n°18)
+include/appcontainer-pointers.def  apiset names rerouted to KERNELBASE (n°18, n°23)
+include/appcontainer-ntdll.def     the unwinder's Rtl* rerouted to ntdll (n°23)
 Makefile                     install / uninstall / check
 packaging/PKGBUILD           Arch package
 packaging/publish-aur.sh     update and publish it, by hand or from CI

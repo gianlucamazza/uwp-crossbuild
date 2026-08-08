@@ -234,13 +234,19 @@ if [[ $uwp -eq 1 && $static_lib -eq 0 ]]; then
 	aarch64) machine=arm64 ;;
 	*) machine=i386:x86-64 ;;
 	esac
-	# Regenerated when the .def is newer: the cached copy lives in the objdir
-	# and would otherwise keep serving the old symbol list after an edit.
-	pointers="$objdir/appcontainer-pointers.lib"
-	pointers_def="$here/../include/appcontainer-pointers.def"
-	[[ -f "$pointers" && ! "$pointers_def" -nt "$pointers" ]] ||
-		llvm-dlltool -m "$machine" -d "$pointers_def" -l "$pointers"
-	libs=("$pointers" "${libs[@]}")
+	# Two reroute archives, one per providing DLL: KERNELBASE for the names
+	# its console export table really has, ntdll for the unwinder's Rtl*
+	# family (which KERNELBASE lacks — see each .def). Regenerated when the
+	# .def is newer: the cached copy lives in the objdir and would otherwise
+	# keep serving the old symbol list after an edit.
+	reroutes=()
+	for def in appcontainer-pointers appcontainer-ntdll; do
+		lib="$objdir/$def.lib"
+		[[ -f "$lib" && ! "$here/../include/$def.def" -nt "$lib" ]] ||
+			llvm-dlltool -m "$machine" -d "$here/../include/$def.def" -l "$lib"
+		reroutes+=("$lib")
+	done
+	libs=("${reroutes[@]}" "${libs[@]}")
 fi
 
 # The C++ flags. The precompiled header is C++ by definition, and so is every
@@ -252,8 +258,11 @@ if [[ -n "$pch" ]]; then
 	[[ -f "$pch" ]] || die "no such header: $pch"
 	pchfile="$objdir/$(basename "$pch").pch"
 	# ~190 MB and ~40 s to build, so reuse it until the header itself changes.
-	# Anything the header includes is SDK-stable; regenerate by deleting it.
-	if [[ ! -f "$pchfile" || "$pch" -nt "$pchfile" ]]; then
+	# Anything the header includes is SDK-stable — except msvc-compat.h, which
+	# is force-included into the PCH and updated by every `make install`;
+	# clang then refuses the stale PCH with "has been modified since", naming
+	# the header rather than this cache. Regenerate for either.
+	if [[ ! -f "$pchfile" || "$pch" -nt "$pchfile" || "$compat" -nt "$pchfile" ]]; then
 		echo "  precompiling $(basename "$pch")"
 		printf '#include "%s"\n' "$(basename "$pch")" >"$objdir/pch.cpp"
 		clang-cl "${common[@]}" "${cxx[@]}" ${extra[@]+"${extra[@]}"} /c "$objdir/pch.cpp" \
@@ -309,6 +318,11 @@ fi
 
 # ${store_last[@]} stays the final token: no --link-arg a caller adds may land
 # after libcpmt.lib, or it could satisfy a symbol the import libraries export.
+# The map goes in the objdir, never beside the image: everything beside a
+# layout's executable ships in the package. It is what turns a crash dump's
+# module+offset into a name — the Xbox flight PDBs are not on any symbol
+# server, the map is the only symbolication there is.
 exec clang-cl -target "$TARGET" "${objects[@]}" -o "$out" \
-	-fuse-ld=lld-link -link "${libs[@]}" ${link_args[@]+"${link_args[@]}"} \
+	-fuse-ld=lld-link -link "/map:$objdir/link.map" "${libs[@]}" \
+	${link_args[@]+"${link_args[@]}"} \
 	${store_last[@]+"${store_last[@]}"}

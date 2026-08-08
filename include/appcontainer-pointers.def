@@ -1,17 +1,34 @@
-; EncodePointer and DecodePointer, resolved from KERNELBASE.dll by name.
+; Kernel names resolved from KERNELBASE.dll instead of the apiset the SDK
+; import libraries route them through.
 ;
-; xwin's kernel32.lib routes both through api-ms-win-core-util-l1-1-0.dll,
-; an apiset the Xbox app container does not provide: the package installs and
-; the loader then fails the launch with 0x80070002, naming nothing. The static
-; CRT reaches for these two in its /O2 initialisation paths, so any optimised
-; --uwp build can pick the import up without a line of application code.
-; KERNELBASE.dll exports both and is loaded in every app-container process
-; (observed in crash-dump module lists on Xbox OS 26100.8866).
+; xwin's kernel32.lib routes EncodePointer and DecodePointer through
+; api-ms-win-core-util-l1-1-0.dll, an apiset the Xbox app container does not
+; provide: the package installs and the loader then fails the launch with
+; 0x80070002, naming nothing. The static CRT reaches for these two in its /O2
+; initialisation paths, so any optimised --uwp build can pick the import up
+; without a line of application code.
+;
+; The same SDK routes a further pair through minor-version apisets a Series S
+; does not expose either — observed on xllama (216 TU, store CRT): the
+; crossbuilt PE imported api-ms-win-core-file-l1-2-2 (AreFileApisANSI) and
+; api-ms-win-core-processthreads-l1-1-1 (IsProcessorFeaturePresent) and
+; refused activation as 0x80270300, while the CI MSVC PE of the same app
+; imports neither and launches. The CRT reaches for both with no application
+; code involved.
+;
+; KERNELBASE.dll exports every name below, verified against the console
+; itself: the export table read out of a crash dump's mapped KERNELBASE
+; (Xbox OS 26100.8866), not out of an SDK import library — kernelbase.lib
+; understates the DLL. The unwinder's RtlCaptureContext family is NOT here:
+; the console's KERNELBASE does not export it (same dump), it belongs to
+; appcontainer-ntdll.def.
 ;
 ; build.sh turns this into an import library with llvm-dlltool and places it
-; before kernel32.lib, so these two names resolve here and everything else
-; stays where xwin put it.
+; before kernel32.lib, so these names resolve here and everything else stays
+; where xwin put it.
 LIBRARY KERNELBASE.dll
 EXPORTS
     EncodePointer
     DecodePointer
+    AreFileApisANSI
+    IsProcessorFeaturePresent

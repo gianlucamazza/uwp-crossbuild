@@ -7,6 +7,36 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
+## Unreleased
+
+### Added
+
+- **`include/appcontainer-ntdll.def`** — the unwinder's `RtlCaptureContext` /
+  `RtlLookupFunctionEntry` / `RtlVirtualUnwind`, rerouted to `ntdll.dll`. The
+  SDK routes them through `api-ms-win-core-rtlsupport-l1-1-0`, absent on the
+  console, and KERNELBASE cannot take them: the console's own KERNELBASE
+  export table (read from a crash dump) lacks the family. Verified launching
+  on a Series S. `appcontainer-pointers.def` gains `AreFileApisANSI` and
+  `IsProcessorFeaturePresent` (KERNELBASE really exports those). Gotcha n°23.
+- **Every link writes its map to `<objdir>/link.map`.** The Xbox flight PDBs
+  are on no public symbol server; the map is the only symbolication a crash
+  dump gets. Gotcha n°24.
+
+### Fixed
+
+- **Stale reroute import libraries.** The `.def`-generated archives cached in
+  the objdir are regenerated when their `.def` is newer, instead of serving
+  the old symbol list forever.
+- **Stale PCH after `make install`.** The PCH is regenerated when
+  `msvc-compat.h` is newer than it — the header is force-included into every
+  PCH and touched by every install, and clang refuses the stale cache with an
+  error naming the header rather than the cache.
+- **`run-on-device.sh` no longer cries wolf about frameworks.** The Xbox
+  package listing hides framework packages (VCLibs never appears, even while
+  Dev Home holds it open), so a dependency absent from the list is a note
+  about what the listing cannot see, not a prediction of `0x80070002`.
+  Gotcha n°24.
+
 ## 0.5.0 — 2026-08-08
 
 ### Added
