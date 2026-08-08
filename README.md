@@ -90,6 +90,7 @@ opaque `0x8D160120`, so the script refuses them up front.
 | Package, sign, deploy         | [openappx](https://github.com/gianlucamazza/openappx) | ✅ installed on an Xbox        |
 | Launch, on the console        | `run-on-device.sh`, Device Portal                     | ✅ observed running (Series S) |
 | `/MD` via the store CRT       | `fetch-vclibs.sh` + `build.sh --store-crt`            | ✅ imports match a VS build's  |
+| Activation contract, checked  | `pe-import-audit.sh`, after every link                | ✅ trips on every desktop PE   |
 
 ## Known limits
 
@@ -137,14 +138,15 @@ precompiled header is ~190 MB and is reused until the header itself changes.
 
 ## Requirements
 
-| Dependency                                    | Why                                        | Verified with |
-| --------------------------------------------- | ------------------------------------------ | ------------- |
-| `clang-cl`, `lld-link`                        | compiling and linking for the MSVC ABI     | LLVM 22.1.8   |
-| `wine`                                        | running midlrt / makepri / cppwinrt        | 11.14         |
-| `winetricks` → `msxml6`                       | makepri validates its schema through MSXML | 20260125      |
-| [`xwin`](https://github.com/Jake-Shadle/xwin) | CRT and SDK headers/libraries              | 0.9.0         |
-| `p7zip`, `curl`                               | unpacking the NuGet and SDK payloads       | —             |
-| `python3`                                     | `fix-header-case.sh --canonical`           | 3.14          |
+| Dependency                                    | Why                                                              | Verified with |
+| --------------------------------------------- | ---------------------------------------------------------------- | ------------- |
+| `clang-cl`, `lld-link`                        | compiling and linking for the MSVC ABI                           | LLVM 22.1.8   |
+| `llvm` (readobj, dlltool, lib, ar, nm)        | the PE audit after every UWP link; import libraries and archives | LLVM 22.1.8   |
+| `wine`                                        | running midlrt / makepri / cppwinrt                              | 11.14         |
+| `winetricks` → `msxml6`                       | makepri validates its schema through MSXML                       | 20260125      |
+| [`xwin`](https://github.com/Jake-Shadle/xwin) | CRT and SDK headers/libraries                                    | 0.9.0         |
+| `p7zip`, `curl`                               | unpacking the NuGet and SDK payloads                             | —             |
+| `python3`                                     | `fix-header-case.sh --canonical`                                 | 3.14          |
 
 Nothing from Microsoft is redistributed: both `fetch-sdk.sh` and `xwin` download
 from Microsoft's CDN at run time under the SDK licence. CI must re-run them
@@ -179,7 +181,7 @@ Every location, version and target the scripts assume can be overridden:
 `OPENAPPX_DEVICE_PASSWORD` belongs to openappx and completes the device trio;
 `wine-tool.sh` also honours `WINEDEBUG`, defaulting it to `-all`.
 
-## Twenty things that will waste your afternoon
+## The things that will waste your afternoon
 
 Every one of these fails while pointing somewhere else. The scripts handle them;
 this is the record of why they exist.
@@ -458,3 +460,7 @@ from any of those downloads belongs in a commit.
   and one OS build. Another console — or another device family entirely — is
   what would turn two header-level verifications into real ones: the ARM64
   image, and whether the loader accepts what `makepri` writes at runtime.
+- **Watch the 216-translation-unit project start.** It compiles, links, packs
+  and installs; it was never seen launching, and the openappx release that
+  fixed the activation request (0.6.3) postdates the last attempt. One
+  deploy-and-launch turns "installs" into "runs" — or names the next gotcha.
