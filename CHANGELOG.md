@@ -18,15 +18,32 @@ a specific version, and knowing which is the whole point of writing it down.
 
 ### Fixed
 
-- **Store `/MD` no longer appends `libcpmt.lib`.** That archive is MT; linking
-  it into a `/MD` image fails LLD/`FAILIFMISMATCH` as soon as a TU needs
-  `__std_fs_*` (or related STL static helpers that `msvcp140_app` does not
-  export). hello-uwp never pulled those members, so the old "libcpmt last"
-  recipe looked complete. Default app-container runtime stays **`/MT`**;
-  store `/MD` is **opt-in** via `UWP_STORE_CRT=1` (plus `fetch-vclibs.sh`)
-  for apps fully covered by the `*_app` import libs. README gotcha 21.
-  Emergency only: `UWP_STORE_CRT_LIBCPMT=1` restores the old last-token
-  behaviour with a warning.
+- **`--uwp` sets `WINAPI_FAMILY=WINAPI_FAMILY_APP` (Visual Studio parity).**
+  The previous deliberate omission left `WINAPI_FAMILY_PARTITION(DESKTOP)`
+  true, so desktop Win32 (registry, affinity, GDI shape names) compiled into
+  AppContainer images and could fail activation as `0x8027025b`. The real
+  blocker was MSVC STL `<cstdlib>` doing `using _CSTD getenv/system` while the
+  ucrt hides those decls outside the desktop CRT family. `include/msvc-compat.h`
+  now supplies C declarations under non-desktop families (compile-time bridge
+  only). GDI collisions (gotcha 15) fall out of the partition; the old `/DNOGDI`
+  substitute is gone. Gotcha n°7 rewritten.
+
+- **UWP `StaticLibrary` gets `--uwp` compile family too.** `--static-lib` and
+  `--uwp` are no longer exclusive: family + WRL define at compile time;
+  `/appcontainer`, EncodePointer rewrite, and store CRT stay link-only for
+  executables. `read-vcxproj` exposes `app_container` from
+  `AppContainerApplication`; `build-project.sh` passes both flags for
+  container static libs. Without this, a lib like ggml-uwp compiled desktop
+  APIs into the archive and poisoned the PE (gotcha 22).
+
+- **Store `/MD` links MD static STL helpers from `msvcprt.lib`, not `libcpmt`.**
+  `gen-msvcprt-app-static.sh` extracts the `.obj` members of xwin's
+  `msvcprt.lib` (filesystem, vector_algorithms, locale0, … —
+  `RuntimeLibrary=MD_DynamicRelease`) into `msvcprt_app_static.lib`.
+  `--store-crt` links that archive after the `*_app` import libs so
+  `__std_fs_*` / `__std_find_*` / `_Facet_Register` resolve without mixing
+  MT `libcpmt` (FAILIFMISMATCH). Gotcha 21 rewritten. Default without the
+  opt-in remains `/MT`.
 
 ### Added
 

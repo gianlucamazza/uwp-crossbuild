@@ -1,11 +1,12 @@
 // msvc-compat.h — force-included by build.sh before every translation unit.
 //
-// Two things MSVC arranges for you and clang does not. Both are properties of
-// compiling MSVC-targeted C++/WinRT with clang, not of any particular project,
+// Things MSVC arranges for you and clang does not. Properties of compiling
+// MSVC-targeted C++/WinRT (and UWP) with clang, not of any particular project,
 // so they belong here rather than in each pch.h — a source tree written for
 // Visual Studio has to compile unmodified.
 //
-// Order matters: <version> must come before anything that includes winrt/base.h.
+// Order matters: <version> must come before anything that includes winrt/base.h;
+// the cstdlib bridge must come after <windows.h> so WINAPI_FAMILY is known.
 
 // 1. Coroutines. base.h enables its coroutine support with
 //
@@ -42,3 +43,28 @@
 #endif
 #include <windows.h>
 #undef GetCurrentTime
+
+// 3. cstdlib under WINAPI_FAMILY_APP. build.sh --uwp sets
+//    /DWINAPI_FAMILY=WINAPI_FAMILY_APP (same as Visual Studio UWP). That is the
+//    correct partition: desktop-only Win32 and CRT surface stays out of the
+//    compile. The ucrt then gates getenv/system on
+//    _CRT_USE_WINAPI_FAMILY_DESKTOP_APP, while the MSVC STL's <cstdlib> still
+//    does `using _CSTD getenv;` / `using _CSTD system;` unconditionally — so
+//    every TU that includes <cstdlib> fails with "no member named 'getenv' in
+//    the global namespace". MSVC's own toolset papers over the same mismatch;
+//    clang does not. Provide C declarations so the `using` resolves.
+//
+//    These are compile-time bridges only. They do not re-open the desktop CRT
+//    partition, do not define the bodies, and do not license calling getenv or
+//    system inside an AppContainer (those remain desktop APIs). If a project
+//    actually references them, the linker / pe-import-audit surface that.
+#if defined(WINAPI_FAMILY) && (WINAPI_FAMILY != WINAPI_FAMILY_DESKTOP_APP)
+    #ifdef __cplusplus
+extern "C" {
+    #endif
+char *__cdecl getenv(char const *);
+int __cdecl system(char const *);
+    #ifdef __cplusplus
+}
+    #endif
+#endif

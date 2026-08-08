@@ -180,24 +180,34 @@ fails_with "a flag with no value says so" "--out needs a value" \
 	"$scripts/build.sh" --out
 fails_with "--jobs takes a positive integer" "--jobs must be a positive integer" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe --jobs 0 "$tmp/a.cpp"
-# An archive has no DllCharacteristics to set: /appcontainer belongs to the
-# application that links the library, not to the library.
+# An archive has no DllCharacteristics: /appcontainer is link-only. But a UWP
+# StaticLibrary still needs WINAPI_FAMILY=APP at compile time, so --static-lib
+# + --uwp is legal (compile family yes, image flags no). store-crt is link-only.
 mkdir -p "$tmp/crt/include"
-fails_with "--static-lib and --uwp are exclusive" "exclusive" \
-	env UWP_XWIN_ROOT="$tmp" "$scripts/build.sh" --static-lib --uwp \
+fails_with "--store-crt with --static-lib is a contradiction" "static-lib" \
+	env UWP_XWIN_ROOT="$tmp" "$scripts/build.sh" --static-lib --uwp --store-crt \
 	--out a.lib "$tmp/a.cpp"
 fails_with "--store-crt without --uwp is a contradiction" "store CRT" \
 	env UWP_XWIN_ROOT="$tmp" "$scripts/build.sh" --store-crt --out a.exe "$tmp/a.cpp"
+assert "build.sh accepts --static-lib --uwp (compile family only)" "still exclusive" \
+	grep -q 'static-lib + --uwp is legal' "$scripts/build.sh"
 # Checked before the xwin CRT: the fix is fetch-vclibs.sh, and a message naming
 # fetch-sdk.sh would send someone to re-run a download that cannot help.
 fails_with "--store-crt without the libraries names fetch-vclibs.sh" "fetch-vclibs.sh" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --uwp --store-crt \
 	--out a.exe "$tmp/a.cpp"
-# libcpmt.lib must stay the link's final token — anywhere earlier it could
-# satisfy a symbol the import libraries export. Pinned statically, like the
-# SDK default: its expansion is the last thing on build.sh's exec line.
-assert "libcpmt.lib's expansion is the exec line's last token" "store_last moved" \
+# store_last expands last: msvcprt_app_static.lib (MD helpers), never libcpmt.
+assert "store_last expansion stays last when set" "store_last moved" \
 	grep -qP '^\t\$\{store_last\[@\]\+"\$\{store_last\[@\]\}"\}$' "$scripts/build.sh"
+assert "store path links msvcprt_app_static (MD helpers)" "no MD static helpers" \
+	grep -q 'msvcprt_app_static.lib' "$scripts/build.sh"
+if grep -q 'UWP_STORE_CRT_LIBCPMT' "$scripts/build.sh"; then
+	no "store path does not fall back to libcpmt" "libcpmt still forced"
+else
+	ok "store path does not fall back to libcpmt"
+fi
+assert "gen-msvcprt-app-static.sh exists" "missing helper generator" \
+	test -x "$scripts/gen-msvcprt-app-static.sh"
 rm -rf "$tmp"
 
 echo "fetch-vclibs.sh guards"
@@ -499,28 +509,33 @@ succeeds_with "outside the container the DLL runtime is honoured" "/MD" \
 	"$read_vcxproj" "$vcxproj" --property AppContainerApplication=false --field options
 lacks "as the release runtime, not the debug one" "/MDd" \
 	"$read_vcxproj" "$vcxproj" --property AppContainerApplication=false --field options
-# The other branch of the runtime story: with the store CRT import libraries
-# fetch-vclibs.sh generates in place, /MD is honoured and the project says so.
-# Empty files are enough — the probe is presence-only; generation itself runs
-# only in the manual workflow, against the real appx.
+# Store /MD is opt-in (UWP_STORE_CRT=1) even when fetch-vclibs output is on
+# disk: default remains /MT so filesystem-heavy apps do not hit the
+# libcpmt MT vs /MD FAILIFMISMATCH (gotcha 21). Empty files are enough for
+# the presence probe; generation itself runs only in the manual workflow.
 vclibs="$(mktemp -d)"
 mkdir -p "$vclibs/lib/x86_64"
 touch "$vclibs/lib/x86_64/vcruntime140_app.lib" "$vclibs/lib/x86_64/msvcp140_app.lib"
-succeeds_with "/MD is honoured when the store CRT is there" "/MD" \
+succeeds_with "without UWP_STORE_CRT the container stays on /MT" "/MT" \
 	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field options
-lacks "and the static override stays out" "/MT" \
-	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field options
-succeeds_with "and the project says so" "true" \
+succeeds_with "and store_crt stays false by default" "false" \
 	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field store_crt
-succeeds_with "--flags carries it to build.sh" "--store-crt" \
-	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --flags
+succeeds_with "/MD is honoured when store CRT is there and UWP_STORE_CRT=1" "/MD" \
+	env UWP_VCLIBS_ROOT="$vclibs" UWP_STORE_CRT=1 "$read_vcxproj" "$vcxproj" --field options
+lacks "and the static override stays out under the opt-in" "/MT" \
+	env UWP_VCLIBS_ROOT="$vclibs" UWP_STORE_CRT=1 "$read_vcxproj" "$vcxproj" --field options
+succeeds_with "and the project says store_crt under the opt-in" "true" \
+	env UWP_VCLIBS_ROOT="$vclibs" UWP_STORE_CRT=1 "$read_vcxproj" "$vcxproj" --field store_crt
+succeeds_with "--flags carries --store-crt under the opt-in" "--store-crt" \
+	env UWP_VCLIBS_ROOT="$vclibs" UWP_STORE_CRT=1 "$read_vcxproj" "$vcxproj" --flags
 # A half-generated cache is exactly what a presence probe gets wrong, so the
-# probe wants both libraries: one alone still means the static fallback.
+# probe wants both libraries: one alone still means the static fallback even
+# with UWP_STORE_CRT=1.
 rm "$vclibs/lib/x86_64/msvcp140_app.lib"
 succeeds_with "half a cache still means the static fallback" "/MT" \
-	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field options
+	env UWP_VCLIBS_ROOT="$vclibs" UWP_STORE_CRT=1 "$read_vcxproj" "$vcxproj" --field options
 succeeds_with "and the project says that too" "false" \
-	env UWP_VCLIBS_ROOT="$vclibs" "$read_vcxproj" "$vcxproj" --field store_crt
+	env UWP_VCLIBS_ROOT="$vclibs" UWP_STORE_CRT=1 "$read_vcxproj" "$vcxproj" --field store_crt
 rm -rf "$vclibs"
 # Rows the default Visual Studio template emits: RTTI off, and the Release
 # linker's /opt pair — lld-link implements both.
@@ -630,12 +645,14 @@ deps_out="$(mktemp -d)"
 mkdir -p "$vclibs/lib/x86_64"
 touch "$vclibs/lib/x86_64/vcruntime140_app.lib" "$vclibs/lib/x86_64/msvcp140_app.lib"
 fails_with "a store-CRT manifest must declare the VCLibs dependency" "PackageDependency" \
-	env UWP_VCLIBS_ROOT="$vclibs" "$scripts/build-project.sh" --project "$vcxproj" \
+	env UWP_VCLIBS_ROOT="$vclibs" UWP_STORE_CRT=1 \
+	"$scripts/build-project.sh" --project "$vcxproj" \
 	--no-restore --out "$deps_out/layout"
 # The store-flavour manifest declares it: the check passes, and the run dies
 # later, on the toolchain this environment does not have.
 lacks "a manifest that declares it passes the check" "PackageDependency" \
-	env UWP_VCLIBS_ROOT="$vclibs" UWP_SDK_ROOT=/nonexistent UWP_XWIN_ROOT=/nonexistent \
+	env UWP_VCLIBS_ROOT="$vclibs" UWP_STORE_CRT=1 \
+	UWP_SDK_ROOT=/nonexistent UWP_XWIN_ROOT=/nonexistent \
 	"$scripts/build-project.sh" --project "$vcxproj" --property StoreSku=true \
 	--no-restore --out "$deps_out/layout"
 rm -rf "$vclibs" "$deps_out"
@@ -750,6 +767,20 @@ assert "<version> comes before <windows.h>" "wrong order in msvc-compat.h" \
 	"$(grep -n "include <windows.h>" "$compat" | cut -d: -f1)"
 assert "GetCurrentTime is undefined after windows.h" "no #undef GetCurrentTime" \
 	grep -q "^#undef GetCurrentTime" "$compat"
+assert "cstdlib APP bridge declares getenv under non-desktop family" "no getenv bridge" \
+	grep -q 'char \*__cdecl getenv' "$compat"
+assert "cstdlib APP bridge declares system under non-desktop family" "no system bridge" \
+	grep -q 'int __cdecl system' "$compat"
+# --uwp must set the app family (VS parity). Without it DESKTOP stays true and
+# desktop Win32 compiles into AppContainer images (gotcha 22). The cstdlib
+# bridge in msvc-compat.h is what makes the family settable (gotcha 7).
+assert "--uwp sets WINAPI_FAMILY=WINAPI_FAMILY_APP" "APP family not set for --uwp" \
+	grep -q 'extra+=(/DWINAPI_FAMILY=WINAPI_FAMILY_APP)' "$scripts/build.sh"
+if grep -qF 'extra+=(/DNOGDI)' "$scripts/build.sh"; then
+	no "--uwp no longer substitutes NOGDI for the app family" "NOGDI workaround still present"
+else
+	ok "--uwp no longer substitutes NOGDI for the app family"
+fi
 # The header is force-included into every translation unit, C ones included, and
 # <version> is a C++ header: a C source stopped on "'version' file not found",
 # blaming a file the project never included. Neither compile can succeed here —
@@ -766,6 +797,46 @@ else
 	fails_with "a C++ one does" "'version' file not found" \
 		clang-cl -target x86_64-pc-windows-msvc /std:c++20 "/FI$compat" \
 		/c "$tmp/cpp.cpp" -o "$tmp/cpp.obj"
+	rm -rf "$tmp"
+fi
+# Full xwin path: APP family + force-included bridge must compile <cstdlib>.
+# Without the bridge the STL using of getenv/system fails (gotcha 7).
+xwin_root="${UWP_XWIN_ROOT:-$HOME/.cache/uwp-crossbuild/xwin}"
+if ! command -v clang-cl >/dev/null; then
+	skip "APP family compiles <cstdlib> with the bridge" "clang-cl is not installed"
+elif [[ ! -d "$xwin_root/crt/include" || ! -d "$xwin_root/sdk/include/ucrt" ]]; then
+	skip "APP family compiles <cstdlib> with the bridge" "xwin CRT not at $xwin_root"
+else
+	tmp="$(mktemp -d)"
+	printf '#include <cstdlib>\nint f() { return 0; }\n' >"$tmp/app_cstdlib.cpp"
+	succeeds_with "APP family compiles <cstdlib> with the bridge" "" \
+		clang-cl -target x86_64-pc-windows-msvc /std:c++20 \
+		/DWINAPI_FAMILY=WINAPI_FAMILY_APP "/FI$compat" \
+		/imsvc "$xwin_root/crt/include" \
+		/imsvc "$xwin_root/sdk/include/ucrt" \
+		/imsvc "$xwin_root/sdk/include/um" \
+		/imsvc "$xwin_root/sdk/include/shared" \
+		/c "$tmp/app_cstdlib.cpp" -o "$tmp/app_cstdlib.obj"
+	# Negative control: same TU without the bridge must still fail.
+	fails_with "APP family without the bridge still breaks <cstdlib>" "getenv" \
+		clang-cl -target x86_64-pc-windows-msvc /std:c++20 \
+		/DWINAPI_FAMILY=WINAPI_FAMILY_APP \
+		/imsvc "$xwin_root/crt/include" \
+		/imsvc "$xwin_root/sdk/include/ucrt" \
+		/imsvc "$xwin_root/sdk/include/um" \
+		/imsvc "$xwin_root/sdk/include/shared" \
+		/c "$tmp/app_cstdlib.cpp" -o "$tmp/app_cstdlib_nobridge.obj"
+	# Partition itself: DESKTOP must be false under APP (GDI / RegOpen gated).
+	printf '#include <windows.h>\n#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)\n#error desktop\n#endif\nint x;\n' \
+		>"$tmp/partition.cpp"
+	succeeds_with "APP family makes DESKTOP partition false" "" \
+		clang-cl -target x86_64-pc-windows-msvc /std:c++20 \
+		/DWINAPI_FAMILY=WINAPI_FAMILY_APP "/FI$compat" \
+		/imsvc "$xwin_root/crt/include" \
+		/imsvc "$xwin_root/sdk/include/ucrt" \
+		/imsvc "$xwin_root/sdk/include/um" \
+		/imsvc "$xwin_root/sdk/include/shared" \
+		/c "$tmp/partition.cpp" -o "$tmp/partition.obj"
 	rm -rf "$tmp"
 fi
 
