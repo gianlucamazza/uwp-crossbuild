@@ -131,6 +131,14 @@ compat="$here/../include/msvc-compat.h"
 # choosing one — so what this buys is a stated standard per language and no
 # warning per translation unit. The part that really did fail is in
 # include/msvc-compat.h, which is force-included into C sources too.
+# UWP_CPPWINRT_INCLUDE: optional directory containing winrt/ headers generated
+# by the same cppwinrt.exe as UWP_CPPWINRT_EXE (project NuGet pin). Placed
+# before xwin's cppwinrt so detect_mismatch and component code share one version.
+cppwinrt_inc=()
+if [[ -n "${UWP_CPPWINRT_INCLUDE:-}" ]]; then
+	[[ -d "$UWP_CPPWINRT_INCLUDE" ]] || die "UWP_CPPWINRT_INCLUDE is not a directory: $UWP_CPPWINRT_INCLUDE"
+	cppwinrt_inc=("/I$UWP_CPPWINRT_INCLUDE")
+fi
 common=(
 	-target "$TARGET" /W3
 	"/FI$compat"
@@ -139,6 +147,7 @@ common=(
 	/imsvc "$XWIN_ROOT/sdk/include/um"
 	/imsvc "$XWIN_ROOT/sdk/include/shared"
 	/imsvc "$XWIN_ROOT/sdk/include/winrt"
+	${cppwinrt_inc[@]+"${cppwinrt_inc[@]}"}
 	/imsvc "$XWIN_ROOT/sdk/include/cppwinrt"
 	${include_dirs[@]+"${include_dirs[@]}"}
 )
@@ -225,9 +234,12 @@ if [[ $uwp -eq 1 && $static_lib -eq 0 ]]; then
 	aarch64) machine=arm64 ;;
 	*) machine=i386:x86-64 ;;
 	esac
+	# Regenerated when the .def is newer: the cached copy lives in the objdir
+	# and would otherwise keep serving the old symbol list after an edit.
 	pointers="$objdir/appcontainer-pointers.lib"
-	[[ -f "$pointers" ]] || llvm-dlltool -m "$machine" \
-		-d "$here/../include/appcontainer-pointers.def" -l "$pointers"
+	pointers_def="$here/../include/appcontainer-pointers.def"
+	[[ -f "$pointers" && ! "$pointers_def" -nt "$pointers" ]] ||
+		llvm-dlltool -m "$machine" -d "$pointers_def" -l "$pointers"
 	libs=("$pointers" "${libs[@]}")
 fi
 
