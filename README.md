@@ -154,27 +154,27 @@ rather than cache the result in an artefact store.
 
 Every location, version and target the scripts assume can be overridden:
 
-| Variable                   | Default                                   | What it changes                                               |
-| -------------------------- | ----------------------------------------- | ------------------------------------------------------------- |
-| `UWP_XWIN_ROOT`            | `~/.cache/uwp-crossbuild/xwin`            | where `xwin splat` put the CRT and SDK headers and libraries  |
-| `UWP_SDK_ROOT`             | `~/.cache/uwp-crossbuild/sdk`             | where `fetch-sdk.sh` extracts the SDK tools and metadata      |
-| `UWP_SDK_WORK`             | `~/.cache/uwp-crossbuild/work`            | the installer download and layout cache                       |
-| `UWP_SDK_VERSION`          | `10.0.22621.0`                            | the version directory the tools and metadata live under       |
-| `UWP_SDK_URL`              | Microsoft's fwlink for that SDK           | the web installer `fetch-sdk.sh` downloads                    |
-| `UWP_CPPWINRT_VERSION`     | read from xwin's `base.h`                 | the cppwinrt.exe pin — must match the `winrt/` headers (n°13) |
-| `UWP_CPPWINRT_EXE`         | `$UWP_SDK_ROOT/cppwinrt/bin/…`            | the cppwinrt.exe Wine runs (`CPPWINRT_EXE` still works)       |
-| `UWP_TARGET`               | `x86_64-pc-windows-msvc`                  | clang's `-target`; `build-project.sh --platform` sets it      |
-| `UWP_ARCH_DIR`             | `x86_64`                                  | the architecture subdirectory of the CRT and SDK libraries    |
-| `UWP_CXX_STD`              | `c++20`                                   | `/std:` for C++ — c++17 cannot work (n°1)                     |
-| `UWP_C_STD`                | `c17`                                     | `/std:` for `.c` sources                                      |
-| `UWP_OBJ_DIR`              | `<out>.objs` (`<out>.build` for a layout) | objects, PCH and generated files                              |
-| `UWP_NUGET_FEED`           | `https://www.nuget.org/api/v2/package`    | where `restore-nuget.sh` downloads from                       |
-| `UWP_VCLIBS_ROOT`          | `~/.cache/uwp-crossbuild/vclibs`          | the store CRT cache `fetch-vclibs.sh` fills (n°19)            |
-| `UWP_VCLIBS_URL`           | none — there is no stable public link     | where `fetch-vclibs.sh --url` downloads the framework appx    |
-| `UWP_VCLIBS_ACCEPT_LICENSE`| unset                                     | `1` accepts Microsoft's terms for that download, as a flag would |
-| `UWP_DEVICE_ENV`           | `~/.config/uwp-crossbuild/device-env`     | the file `run-on-device.sh` sources for the device variables  |
-| `UWP_DEVICE_URL` / `_USER` | from that file                            | the Device Portal, as in Dev Home → Remote Access             |
-| `UWP_DEVICE_PFX`           | `~/.config/uwp-crossbuild/dev.pfx`        | the signing certificate; subject must equal the Publisher     |
+| Variable                    | Default                                   | What it changes                                                  |
+| --------------------------- | ----------------------------------------- | ---------------------------------------------------------------- |
+| `UWP_XWIN_ROOT`             | `~/.cache/uwp-crossbuild/xwin`            | where `xwin splat` put the CRT and SDK headers and libraries     |
+| `UWP_SDK_ROOT`              | `~/.cache/uwp-crossbuild/sdk`             | where `fetch-sdk.sh` extracts the SDK tools and metadata         |
+| `UWP_SDK_WORK`              | `~/.cache/uwp-crossbuild/work`            | the installer download and layout cache                          |
+| `UWP_SDK_VERSION`           | `10.0.22621.0`                            | the version directory the tools and metadata live under          |
+| `UWP_SDK_URL`               | Microsoft's fwlink for that SDK           | the web installer `fetch-sdk.sh` downloads                       |
+| `UWP_CPPWINRT_VERSION`      | read from xwin's `base.h`                 | the cppwinrt.exe pin — must match the `winrt/` headers (n°13)    |
+| `UWP_CPPWINRT_EXE`          | `$UWP_SDK_ROOT/cppwinrt/bin/…`            | the cppwinrt.exe Wine runs (`CPPWINRT_EXE` still works)          |
+| `UWP_TARGET`                | `x86_64-pc-windows-msvc`                  | clang's `-target`; `build-project.sh --platform` sets it         |
+| `UWP_ARCH_DIR`              | `x86_64`                                  | the architecture subdirectory of the CRT and SDK libraries       |
+| `UWP_CXX_STD`               | `c++20`                                   | `/std:` for C++ — c++17 cannot work (n°1)                        |
+| `UWP_C_STD`                 | `c17`                                     | `/std:` for `.c` sources                                         |
+| `UWP_OBJ_DIR`               | `<out>.objs` (`<out>.build` for a layout) | objects, PCH and generated files                                 |
+| `UWP_NUGET_FEED`            | `https://www.nuget.org/api/v2/package`    | where `restore-nuget.sh` downloads from                          |
+| `UWP_VCLIBS_ROOT`           | `~/.cache/uwp-crossbuild/vclibs`          | the store CRT cache `fetch-vclibs.sh` fills (n°19)               |
+| `UWP_VCLIBS_URL`            | none — there is no stable public link     | where `fetch-vclibs.sh --url` downloads the framework appx       |
+| `UWP_VCLIBS_ACCEPT_LICENSE` | unset                                     | `1` accepts Microsoft's terms for that download, as a flag would |
+| `UWP_DEVICE_ENV`            | `~/.config/uwp-crossbuild/device-env`     | the file `run-on-device.sh` sources for the device variables     |
+| `UWP_DEVICE_URL` / `_USER`  | from that file                            | the Device Portal, as in Dev Home → Remote Access                |
+| `UWP_DEVICE_PFX`            | `~/.config/uwp-crossbuild/dev.pfx`        | the signing certificate; subject must equal the Publisher        |
 
 `OPENAPPX_DEVICE_PASSWORD` belongs to openappx and completes the device trio;
 `wine-tool.sh` also honours `WINEDEBUG`, defaulting it to `-all`.
@@ -333,7 +333,7 @@ invalid`, which is true — that is not legal XML — but says nothing about
 
 20. **The Device Portal registers a package whose dependencies are missing.**
     A store-CRT build needs the `Microsoft.VCLibs.140.00` framework declared
-    as a `<PackageDependency>` *and installed on the device*; the install
+    as a `<PackageDependency>` _and installed on the device_; the install
     step verifies neither, completes without complaint, and the loader then
     fails the launch as `0x80070002`, naming nothing — the same code as
     n°18, from the portal indistinguishable. `build-project.sh` refuses a
@@ -363,7 +363,11 @@ invalid`, which is true — that is not legal XML — but says nothing about
     `build-project.sh` passes `--static-lib --uwp` for those projects;
     `build.sh` applies the family define at compile time and skips
     `/appcontainer` (link-only) for archives. **Gate:**
-    `scripts/pe-import-audit.sh path/to/app.exe` fails closed on the banlist.
+    `scripts/pe-import-audit.sh` checks the whole activation contract on the
+    PE — banlist symbols, desktop CRT DLLs, subsystem ≥ 6.02, the AppContainer
+    bit — and `build-app.sh` / `build-project.sh` run it after every link
+    (with `--allow-kernel32`; `UWP_SKIP_IMPORT_AUDIT=1` opts out,
+    `UWP_AUDIT_FORBID` extends the banlist).
 
 ## Layout
 
@@ -381,7 +385,7 @@ scripts/read-vcxproj.py      a Visual Studio project -> what it builds, as JSON
 scripts/restore-nuget.sh     packages.config -> packages/, from nuget.org
 scripts/build-project.sh     a .vcxproj -> a layout, references and DLLs included
 scripts/run-on-device.sh     a layout -> the console: packed, signed, installed, launched
-scripts/pe-import-audit.sh   PE import banlist gate (Xbox AppContainer canaries)
+scripts/pe-import-audit.sh   activation-contract gate: imports, subsystem, AppContainer bit
 scripts/gen-msvcprt-app-static.sh  MD static STL helpers from msvcprt.lib (store /MD)
 scripts/common.sh            sourced by all of them: errors, downloads, layout rules
 include/msvc-compat.h        force-included: what clang needs that MSVC assumes

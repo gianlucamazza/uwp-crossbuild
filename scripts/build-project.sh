@@ -321,6 +321,18 @@ build_project() { # build_project <project> <output path> <static|application>
 
 build_project "$project" "$out/$executable" application
 
+# The activation contract, checked on the PE just linked rather than on the
+# console: forbidden desktop imports (a reference archive's included — the
+# poisoning gotcha 22 names), subsystem version, the AppContainer bit.
+# --allow-kernel32 because crossbuilt images that launch carry that import; the
+# strict form stays a manual pre-deploy check. UWP_SKIP_IMPORT_AUDIT=1 to
+# opt out — the default fails closed, an audited failure being cheaper than a
+# package that installs and refuses to start.
+if [[ "${UWP_SKIP_IMPORT_AUDIT:-0}" != 1 ]]; then
+	step "Import audit"
+	"$here/pe-import-audit.sh" --allow-kernel32 "$out/$executable"
+fi
+
 step "Assembling the layout"
 directory="$(dirname "$project")"
 manifest="$(field "$project" manifest)"

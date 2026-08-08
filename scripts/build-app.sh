@@ -154,6 +154,17 @@ build_args=(--uwp --out "$out/$name.exe")
 UWP_OBJ_DIR="$build/obj" \
 	"$here/build.sh" "${build_args[@]}" "${sources[@]}" -- /I"$gen" /I"$project"
 
+# The activation contract, checked on the PE just linked rather than on the
+# console: forbidden desktop imports, subsystem version, the AppContainer bit.
+# --allow-kernel32 because crossbuilt images that launch carry that import; the
+# strict form stays a manual pre-deploy check. UWP_SKIP_IMPORT_AUDIT=1 to
+# opt out — the default fails closed, an audited failure being cheaper than a
+# package that installs and refuses to start.
+if [[ "${UWP_SKIP_IMPORT_AUDIT:-0}" != 1 ]]; then
+	step "Import audit"
+	"$here/pe-import-audit.sh" --allow-kernel32 "$out/$name.exe"
+fi
+
 step "Assembling the layout"
 cp "$project/AppxManifest.xml" "$out/"
 [[ -d "$project/Assets" ]] && cp -r "$project/Assets" "$out/"
