@@ -7,7 +7,7 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
-## Unreleased
+## 0.5.0 — 2026-08-08
 
 ### Added
 
@@ -18,37 +18,6 @@ a specific version, and knowing which is the whole point of writing it down.
   AppContainer bit, and — unless `--allow-kernel32` — raw `KERNEL32.dll`.
   `build-app.sh` and `build-project.sh` run it after every link
   (`--allow-kernel32`; `UWP_SKIP_IMPORT_AUDIT=1` opts out). Gotcha n°22.
-
-### Fixed
-
-- **`--uwp` sets `WINAPI_FAMILY=WINAPI_FAMILY_APP` (Visual Studio parity).**
-  The previous deliberate omission left `WINAPI_FAMILY_PARTITION(DESKTOP)`
-  true, so desktop Win32 (registry, affinity, GDI shape names) compiled into
-  AppContainer images and could fail activation as `0x8027025b`. The real
-  blocker was MSVC STL `<cstdlib>` doing `using _CSTD getenv/system` while the
-  ucrt hides those decls outside the desktop CRT family. `include/msvc-compat.h`
-  now supplies C declarations under non-desktop families (compile-time bridge
-  only). GDI collisions (gotcha 15) fall out of the partition; the old `/DNOGDI`
-  substitute is gone. Gotcha n°7 rewritten.
-
-- **UWP `StaticLibrary` gets `--uwp` compile family too.** `--static-lib` and
-  `--uwp` are no longer exclusive: family + WRL define at compile time;
-  `/appcontainer`, EncodePointer rewrite, and store CRT stay link-only for
-  executables. `read-vcxproj` exposes `app_container` from
-  `AppContainerApplication`; `build-project.sh` passes both flags for
-  container static libs. Without this, a lib like ggml-uwp compiled desktop
-  APIs into the archive and poisoned the PE (gotcha 22).
-
-- **Store `/MD` links MD static STL helpers from `msvcprt.lib`, not `libcpmt`.**
-  `gen-msvcprt-app-static.sh` extracts the `.obj` members of xwin's
-  `msvcprt.lib` (filesystem, vector_algorithms, locale0, … —
-  `RuntimeLibrary=MD_DynamicRelease`) into `msvcprt_app_static.lib`.
-  `--store-crt` links that archive after the `*_app` import libs so
-  `__std_fs_*` / `__std_find_*` / `_Facet_Register` resolve without mixing
-  MT `libcpmt` (FAILIFMISMATCH). Gotcha 21 rewritten. Default without the
-  opt-in remains `/MT`.
-
-### Added
 
 - **`fetch-vclibs.sh` generates the store CRT import libraries** modern MSVC
   no longer ships, out of the `Microsoft.VCLibs` framework appx (point
@@ -103,12 +72,51 @@ a specific version, and knowing which is the whole point of writing it down.
   neither copy. `UWP_SDK_VERSION` still overrides it everywhere; a test now
   holds the literal to one file.
 
+- **The gotcha list's title stops counting.** "Twenty things" was already
+  twenty-two; the heading is now count-free — the same cure 0.4.0 applied to
+  the citations that named a number.
+
 ### Fixed
+
+- **`--uwp` sets `WINAPI_FAMILY=WINAPI_FAMILY_APP` (Visual Studio parity).**
+  The previous deliberate omission left `WINAPI_FAMILY_PARTITION(DESKTOP)`
+  true, so desktop Win32 (registry, affinity, GDI shape names) compiled into
+  AppContainer images and could fail activation as `0x8027025b`. The real
+  blocker was MSVC STL `<cstdlib>` doing `using _CSTD getenv/system` while the
+  ucrt hides those decls outside the desktop CRT family. `include/msvc-compat.h`
+  now supplies C declarations under non-desktop families (compile-time bridge
+  only). GDI collisions (gotcha 15) fall out of the partition; the old `/DNOGDI`
+  substitute is gone. Gotcha n°7 rewritten.
+
+- **UWP `StaticLibrary` gets `--uwp` compile family too.** `--static-lib` and
+  `--uwp` are no longer exclusive: family + WRL define at compile time;
+  `/appcontainer`, EncodePointer rewrite, and store CRT stay link-only for
+  executables. `read-vcxproj` exposes `app_container` from
+  `AppContainerApplication`; `build-project.sh` passes both flags for
+  container static libs. Without this, a lib like ggml-uwp compiled desktop
+  APIs into the archive and poisoned the PE (gotcha 22).
+
+- **Store `/MD` links MD static STL helpers from `msvcprt.lib`, not `libcpmt`.**
+  `gen-msvcprt-app-static.sh` extracts the `.obj` members of xwin's
+  `msvcprt.lib` (filesystem, vector_algorithms, locale0, … —
+  `RuntimeLibrary=MD_DynamicRelease`) into `msvcprt_app_static.lib`.
+  `--store-crt` links that archive after the `*_app` import libs so
+  `__std_fs_*` / `__std_find_*` / `_Facet_Register` resolve without mixing
+  MT `libcpmt` (FAILIFMISMATCH). Gotcha 21 rewritten. Default without the
+  opt-in remains `/MT`.
 
 - **Two citations still said `README, "Fourteen things"`** — the list has been
   "Eighteen things" since 0.3.0, and the number will keep moving. The comment
   in `read-vcxproj.py` and its twin in `tests/run-tests.sh` now cite the list
   by role ("the README's gotcha list") instead of by a count that rots.
+
+- **`llvm` is a dependency, not an optional one.** `pe-import-audit.sh`
+  follows every UWP link with `llvm-readobj`, fail-closed, so an install
+  without the llvm package failed every build. The PKGBUILD promotes it from
+  optdepends to depends; `check-deps.sh` now reports the five LLVM tools the
+  audit and the store-CRT path use, and `openappx` as the optional deploy
+  half; the in-tree `.SRCINFO` — stale since 0.2.0 — is regenerated; the
+  README Requirements table gains the row.
 
 ## 0.4.0 — 2026-08-02
 
