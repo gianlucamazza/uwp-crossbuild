@@ -224,10 +224,16 @@ this is the record of why they exist.
    translation unit, so a source tree written for Visual Studio compiles
    unmodified. That is where this and `GetCurrentTime` live.
 
-7. **`/DWINAPI_FAMILY=WINAPI_FAMILY_APP` breaks `<cstdlib>`.** The header
-   partition hides `system` and `getenv` outside the desktop family while the
-   MSVC STL still writes `using _CSTD system;` unconditionally. `--uwp`
-   deliberately leaves it out; the app container is set at link time instead.
+7. **`<cstdlib>` under `WINAPI_FAMILY_APP` needs a compile-time bridge.** `--uwp`
+   sets `/DWINAPI_FAMILY=WINAPI_FAMILY_APP` (same as Visual Studio UWP) so the
+   headers keep desktop-only Win32 and CRT out of the compile. The ucrt then
+   gates `getenv`/`system` on `_CRT_USE_WINAPI_FAMILY_DESKTOP_APP`, while the
+   MSVC STL still does `using _CSTD getenv;` / `using _CSTD system;`
+   unconditionally — every TU that includes `<cstdlib>` fails with "no member
+   named 'getenv'". `include/msvc-compat.h` provides C declarations for those
+   two names under non-desktop families so the `using` resolves. Declaration
+   only: no bodies, no re-opened desktop partition, no license to call them in
+   an AppContainer.
 
 ### The SDK tools
 
@@ -263,16 +269,15 @@ switch`. `gen-projection.sh` runs it from the destination directory instead.
 invalid`, which is true — that is not legal XML — but says nothing about
     comments.
 
-15. **GDI collides with every shape XAML draws.** `wingdi.h` declares
-    `Polyline`, `Rectangle`, `Ellipse`, `Polygon` and `Path`; XAML has a class
-    for each. A page that says `Polyline{}` after `using namespace
-…Xaml::Shapes` stops on "reference to 'Polyline' is ambiguous", pointing at
-    the application, which compiles in Visual Studio. It does because those
-    declarations are simply absent there: `wingdi.h` puts them behind
-    `WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)`, and a UWP project
-    compiles as the app family — which n°7 explains why we cannot. `--uwp`
-    passes `/DNOGDI` instead: the app container has no GDI, so the only thing
-    those declarations can do here is collide.
+15. **GDI collides with every shape XAML draws — fixed by the app family.**
+    `wingdi.h` declares `Polyline`, `Rectangle`, `Ellipse`, `Polygon` and
+    `Path`; XAML has a class for each. With the desktop family those names
+    land in the global namespace and a page that says `Polyline{}` after
+    `using namespace …Xaml::Shapes` stops on "reference to 'Polyline' is
+    ambiguous". Visual Studio never sees them: `wingdi.h` puts them behind
+    `WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)`, and `--uwp` sets
+    `WINAPI_FAMILY=WINAPI_FAMILY_APP` (n°7). The partition does the work; no
+    separate `NOGDI` workaround.
 
 16. **`msiexec /a` takes a Windows path for the package, not just for
     TARGETDIR.** An administrative install copies the package into TARGETDIR by
@@ -336,34 +341,29 @@ invalid`, which is true — that is not legal XML — but says nothing about
     element to paste), and `run-on-device.sh` warns after install when the
     device does not list a framework the manifest names.
 
-21. **`libcpmt.lib` is MT and must not close store-`/MD` gaps.** The static
-    C++ archive from xwin is built as `RuntimeLibrary=MT_StaticRelease`.
-    `msvcp140_app.dll` does **not** export the STL static helpers
-    (`__std_fs_*`, some `__std_find_*`, `_Thrd_sleep_for`, …) that
-    `std::filesystem` and related TU emit. Pulling those members from
-    `libcpmt` into a `/MD` image fails under LLD (and MSVC LNK2038) with
-    `FAILIFMISMATCH` on `RuntimeLibrary`. Small samples (hello-uwp) never
-    reference those symbols, so a recipe that appended `libcpmt` last looked
-    complete until a filesystem-heavy project (xllama) hit the wall. Default
-    remains `/MT` in the container (n°19). Store `/MD` (`UWP_STORE_CRT=1`) is
-    for apps fully satisfied by the `*_app` import libs. Do not package
-    desktop `vcruntime140.dll` from Wine as a substitute for either path
-    except as an explicit Dev Mode emergency.
+21. **Store `/MD` needs the MD static STL surface, not `libcpmt`.**
+    `msvcp140_app.dll` does **not** export `__std_fs_*`, some `__std_find_*`,
+    or `std::_Facet_Register`. Those live as **object members inside
+    `msvcprt.lib`**, already compiled `RuntimeLibrary=MD_DynamicRelease`
+    (the import stubs for desktop `MSVCP140.dll` share the same archive and
+    must stay out of the container). `libcpmt.lib` holds the same symbols as
+    **MT** and linking it into `/MD` fails with `FAILIFMISMATCH` — never use
+    it to close the gap. `--store-crt` runs `gen-msvcprt-app-static.sh` to
+    extract the `.obj` members into `msvcprt_app_static.lib` and links that
+    after the `*_app` import libs (VS parity for filesystem-heavy apps).
+    Default without the opt-in remains `/MT` in the container (n°19).
 
-22. **Filesystem-heavy UWP apps (xllama) can link and still refuse activation
-    (`0x8027025b`) if the PE imports AppContainer-forbidden symbols.** Observed
-    on Series S: crossbuilt xllama imported `RegOpenKeyExA` /
-    `SetThreadAffinityMask` (from unguarded ggml-cpu desktop paths) plus raw
-    `KERNEL32.dll`, while a CI MSVC image of the same app did not and launched.
-    Two contributing mistakes on the consumer side: (1) not applying
-    AppContainer source guards before the build; (2) relying only on
-    `WINAPI_FAMILY` — this toolchain deliberately does **not** set
-    `/DWINAPI_FAMILY=WINAPI_FAMILY_APP` (n° below on cstdlib), so
-    `WINAPI_FAMILY_PARTITION(DESKTOP)` stays true and desktop code is compiled
-    unless the project defines its own UWP macro (e.g. xllama's `XLLAMA_UWP=1`).
-    **Gate:** `scripts/pe-import-audit.sh path/to/app.exe` fails closed on a
-    banlist (registry, affinity, desktop CRT DLLs). CI MSVC PEs pass; broken
-    crossbuild PEs fail before you waste a deploy cycle.
+22. **UWP `StaticLibrary` projects must compile as the app family too.**
+    `--uwp` on an executable alone is not enough: a referenced static lib
+    (e.g. xllama's `ggml-uwp`) built without `WINAPI_FAMILY=APP` still emits
+    `RegOpenKeyExA` / `SetThreadAffinityMask` into the archive, the linking
+    app inherits them, and Xbox activation fails as `0x8027025b`. Visual
+    Studio sets `AppContainerApplication=true` on those libs and compiles
+    them under the app family. Here: `read-vcxproj` exposes `app_container`;
+    `build-project.sh` passes `--static-lib --uwp` for those projects;
+    `build.sh` applies the family define at compile time and skips
+    `/appcontainer` (link-only) for archives. **Gate:**
+    `scripts/pe-import-audit.sh path/to/app.exe` fails closed on the banlist.
 
 ## Layout
 
@@ -382,6 +382,7 @@ scripts/restore-nuget.sh     packages.config -> packages/, from nuget.org
 scripts/build-project.sh     a .vcxproj -> a layout, references and DLLs included
 scripts/run-on-device.sh     a layout -> the console: packed, signed, installed, launched
 scripts/pe-import-audit.sh   PE import banlist gate (Xbox AppContainer canaries)
+scripts/gen-msvcprt-app-static.sh  MD static STL helpers from msvcprt.lib (store /MD)
 scripts/common.sh            sourced by all of them: errors, downloads, layout rules
 include/msvc-compat.h        force-included: what clang needs that MSVC assumes
 include/appcontainer-pointers.def  EncodePointer/DecodePointer from KERNELBASE (n°18)

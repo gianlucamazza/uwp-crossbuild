@@ -641,6 +641,12 @@ class Description:
             language = "c" if item["path"].suffix.lower() == ".c" else "cpp"
             self.sources[language].append(self._relative(item["path"]))
         self.store_crt = False  # set by _clcompile when /MD can be honoured
+        # VS UWP toolset sets this on both Application and StaticLibrary
+        # projects. The compile family (WINAPI_FAMILY=APP) follows it; the
+        # /appcontainer link flag follows only Application (see build.sh).
+        self.app_container = (
+            properties.get("AppContainerApplication", "") == "true"
+        )
         self.compile_flags, self.includes, self.defines, self.std, self.pch = (
             self._clcompile()
         )
@@ -797,18 +803,28 @@ class Description:
                 # so plain /MD would import the desktop VCRUNTIME140.dll and
                 # activation fails as 0x80270300 (Xbox Series S, OS
                 # 26100.8866; statically linked, the same application
-                # launches). When fetch-vclibs.sh has generated the libraries,
-                # /MD is honoured and build.sh --store-crt links them; when it
-                # has not, the override to the static counterpart stands —
-                # still the one place the evaluator changes MSBuild's answer
-                # instead of mirroring or refusing it. The whole story is the
-                # README's gotcha list, the app-container runtime entry.
+                # launches).
+                #
+                # Default: override MultiThreadedDLL → MultiThreaded (/MT).
+                # That is still the path that installs and runs real projects
+                # (including filesystem-heavy ones).
+                #
+                # Opt-in store /MD: set UWP_STORE_CRT=1 *and* have fetch-vclibs
+                # output present. That honours /MD and enables build.sh
+                # --store-crt. It is correct only for apps whose unresolved
+                # STL helpers are all satisfied by the *_app import libs —
+                # not for std::filesystem (those symbols live in libcpmt, which
+                # is MT and must not be mixed into a /MD image; see README
+                # gotcha 21). This is still the one place the evaluator changes
+                # MSBuild's answer instead of only mirroring or refusing it.
                 container = (
                     self.evaluator.properties.get("AppContainerApplication", "")
                     == "true"
                 )
                 if container and value.endswith("DLL"):
-                    if self._store_crt_present():
+                    import os
+
+                    if self._store_crt_present() and os.environ.get("UWP_STORE_CRT") == "1":
                         self.store_crt = True
                     else:
                         value = value[: -len("DLL")]
@@ -997,6 +1013,7 @@ class Description:
             "pch": self.pch,
             "options": self.compile_flags,
             "store_crt": self.store_crt,
+            "app_container": self.app_container,
             "link": self.link,
             "references": self.references,
             "idl": self.idl,
@@ -1022,6 +1039,9 @@ class Description:
             lines += ["--pch", self.pch]
         if self.type == "StaticLibrary":
             lines.append("--static-lib")
+            # App-container static libs still need WINAPI_FAMILY=APP (gotcha 22).
+            if self.app_container:
+                lines.append("--uwp")
         else:
             lines.append("--uwp")
             if self.store_crt:

@@ -265,6 +265,14 @@ build_project() { # build_project <project> <output path> <static|application>
 
 	if [[ "$kind" == "static" ]]; then
 		arguments+=(--static-lib)
+		# VS UWP StaticLibrary projects set AppContainerApplication=true and
+		# compile under WINAPI_FAMILY=APP. Without --uwp here the archive is
+		# built as desktop and the linking app inherits forbidden imports
+		# (RegOpenKeyEx / SetThreadAffinityMask → 0x8027025b). Gotcha 22.
+		local is_container
+		is_container="$(field "$vcxproj" app_container)" ||
+			die "cannot read app_container from $vcxproj"
+		[[ "$is_container" != "true" ]] || arguments+=(--uwp)
 	else
 		arguments+=(--uwp)
 		# read afresh for this project, like every field: only an application

@@ -4,14 +4,18 @@
 #   build.sh --out app.exe [--uwp] [--pch pch.h] [--jobs N] [-I DIR] \
 #            [--link-arg X] src/*.cpp [-- extra clang-cl args]
 #
-#     --uwp        build for the app container: /appcontainer and the windows
-#                  subsystem. Required for anything that installs as a UWP app.
+#     --uwp        build for the app container. Sets WINAPI_FAMILY=APP at
+#                  compile time (VS parity). For an executable also links
+#                  /appcontainer and the windows subsystem. Required for any
+#                  UWP image, and for StaticLibrary projects that ship inside
+#                  one (they must compile under the same family).
 #     --store-crt  link the DLL runtime against the store CRT
 #                  (VCRUNTIME140_APP.dll and friends) instead of the desktop
-#                  one, using the import libraries fetch-vclibs.sh generates.
-#                  Only with --uwp: the store CRT is a property of the app
-#                  container. The package must declare the Microsoft.VCLibs
-#                  framework dependency — build-project.sh checks it does.
+#                  one, using fetch-vclibs.sh import libs plus
+#                  msvcprt_app_static.lib (MD static STL helpers: __std_fs_*,
+#                  __std_find_*, _Facet_Register). Only with --uwp. The package
+#                  must declare the Microsoft.VCLibs framework dependency —
+#                  build-project.sh checks it does.
 #     -I / --include  an extra include directory (repeatable). Use it for
 #                  third-party headers — a NuGet native package, say — so a
 #                  source tree written for Visual Studio compiles unmodified.
@@ -90,13 +94,16 @@ for src in "${sources[@]}"; do
 done
 # A contradiction in the arguments is answerable on any machine; it comes
 # before the checks for what is installed.
-[[ $static_lib -eq 0 || $uwp -eq 0 ]] ||
-	die "--static-lib and --uwp are exclusive: /appcontainer is a property of
-  an image, and an archive is not one. The application that links this library
-  is where --uwp belongs."
+# --static-lib + --uwp is legal: the archive is not an image, so /appcontainer
+# is skipped, but WINAPI_FAMILY=APP still applies at compile time. Without it
+# a UWP StaticLibrary (ggml-uwp) compiles desktop Win32 into the .lib and the
+# linking application inherits forbidden imports (gotcha 22).
 [[ $store_crt -eq 0 || $uwp -eq 1 ]] ||
 	die "--store-crt without --uwp is a contradiction: the store CRT exists for
   the app container, and outside it the desktop /MD works as it is."
+[[ $store_crt -eq 0 || $static_lib -eq 0 ]] ||
+	die "--store-crt with --static-lib is a contradiction: the store CRT is a
+  link-time property of the application image, not of an archive."
 # Checked before the xwin CRT: the fix is a different script, and a message
 # naming fetch-sdk.sh for a missing store CRT would send someone to re-run a
 # download that cannot help.
@@ -144,51 +151,53 @@ libs=(
 )
 
 if [[ $uwp -eq 1 ]]; then
-	command -v llvm-dlltool >/dev/null ||
-		die "llvm-dlltool not found — it ships with LLVM, beside clang-cl"
+	# Compile-time UWP surface — applies to StaticLibrary and Application.
+	# Match Visual Studio: app family so WINAPI_FAMILY_PARTITION(DESKTOP) is
+	# false. wingdi GDI names and desktop-only Win32 (RegOpenKeyEx,
+	# SetThreadAffinityMask, …) stay out of the compile. include/msvc-compat.h
+	# bridges the MSVC STL cstdlib getenv/system using under this family
+	# (gotcha n°7).
 	extra+=(/D__WRL_NO_DEFAULT_LIB__)
-	# NOGDI, because the app container has no GDI and the names collide with the
-	# ones an application actually draws with. wingdi.h declares Polyline,
-	# Rectangle, Ellipse, Polygon and Path; XAML has a shape class for each, and
-	# a page that says `Polyline{}` after `using namespace …Xaml::Shapes` stops
-	# on "reference to 'Polyline' is ambiguous", pointing at the application.
-	#
-	# In Visual Studio those declarations are simply absent: wingdi.h wraps them
-	# in WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP), and a UWP project
-	# compiles with WINAPI_FAMILY=WINAPI_FAMILY_APP. This is the one piece of
-	# that partition worth reproducing, and windows.h's own switch does it —
-	# see the paragraph below for why the family itself is not set.
-	extra+=(/DNOGDI)
-	# Without /appcontainer the image lacks IMAGE_DLLCHARACTERISTICS_APPCONTAINER
-	# (0x1000) and the package is refused. Verify with:
-	#   objdump -p app.exe | grep DllCharacteristics
-	#
-	# Deliberately NOT set here: /DWINAPI_FAMILY=WINAPI_FAMILY_APP. It would
-	# restrict the headers to the app partition, but it makes <cstdlib>
-	# uncompilable — the ucrt hides `system`/`getenv` outside the desktop
-	# partition while the MSVC STL still does `using _CSTD system;`
-	# unconditionally. Pass it via `--` if you want to audit a translation unit.
-	link_args+=(/appcontainer /subsystem:windows)
+	extra+=(/DWINAPI_FAMILY=WINAPI_FAMILY_APP)
+	# Link-time image flags — only an executable has DllCharacteristics.
+	if [[ $static_lib -eq 0 ]]; then
+		command -v llvm-dlltool >/dev/null ||
+			die "llvm-dlltool not found — it ships with LLVM, beside clang-cl"
+		# Without /appcontainer the image lacks
+		# IMAGE_DLLCHARACTERISTICS_APPCONTAINER (0x1000) and the package is
+		# refused. Verify with: objdump -p app.exe | grep DllCharacteristics
+		# Subsystem 6.02 matches Visual Studio UWP (Windows 8 / Store baseline);
+		# bare /subsystem:windows defaults to 6.00 and has been observed on
+		# crossbuilt images that install but refuse activation as 0x8027025b
+		# while a CI MSVC PE of the same app (6.02) launches.
+		link_args+=(/appcontainer /subsystem:windows,6.02)
+	fi
 fi
 
 store_last=()
 if [[ $store_crt -eq 1 ]]; then
-	# The link that produced imports identical to a Visual Studio build's
-	# (issue #7, proven on hardware 2026-08-02): shut out msvcprt.lib and
-	# vcruntime.lib, whose members import the desktop DLLs, and hand lld the
-	# whole generated *_app set instead — it only imports what is referenced.
-	# libcpmt.lib is real and goes LAST, after every project --link-arg: it
-	# carries the STL's static helpers (__std_find_last_trivial_2 and kin)
-	# that msvcprt.lib would have provided and the VCLibs DLLs do not export;
-	# placed last it satisfies only what the import libraries left
-	# unresolved, never shadowing an export they do have.
+	# Shut out msvcprt.lib and vcruntime.lib (desktop MSVCP140 / VCRUNTIME140
+	# imports) and link:
+	#   1. VCLibs-generated *_app import set (DLL runtime in the container)
+	#   2. msvcprt_app_static.lib — MD .obj members of msvcprt.lib that define
+	#      __std_fs_*, __std_find_*, std::_Facet_Register (not exports of
+	#      msvcp140_app.dll; VS pulls them from this MD static surface).
+	# libcpmt.lib is MT and must never mix into /MD (FAILIFMISMATCH — gotcha 21).
 	store_libs=()
 	for lib in "$vclibs_lib"/*_app.lib; do
 		store_libs+=("$(basename "$lib")")
 	done
+	md_static="$XWIN_ROOT/crt/lib/$ARCH_DIR/msvcprt_app_static.lib"
+	if [[ ! -f "$md_static" ]]; then
+		"$here/gen-msvcprt-app-static.sh"
+	fi
+	[[ -f "$md_static" ]] ||
+		die "no MD static STL helpers at $md_static — run
+  scripts/gen-msvcprt-app-static.sh"
 	link_args+=(/nodefaultlib:msvcprt.lib /nodefaultlib:vcruntime.lib
 		/libpath:"$vclibs_lib" "${store_libs[@]}")
-	store_last=(libcpmt.lib)
+	# Last so only unresolved helpers come from it.
+	store_last=("$md_static")
 fi
 
 # -mcx16 enables cmpxchg16b, which MSVC assumes on x64 and clang does not.
@@ -201,7 +210,7 @@ fi
 objdir="${UWP_OBJ_DIR:-$out.objs}"
 mkdir -p "$objdir"
 
-if [[ $uwp -eq 1 ]]; then
+if [[ $uwp -eq 1 && $static_lib -eq 0 ]]; then
 	# EncodePointer and DecodePointer: xwin's kernel32.lib imports them from
 	# api-ms-win-core-util-l1-1-0.dll, an apiset the Xbox app container does
 	# not provide — the package installs, and the loader then fails the launch
@@ -210,7 +219,7 @@ if [[ $uwp -eq 1 ]]; then
 	# up with no application code involved. include/appcontainer-pointers.def
 	# reroutes exactly these two names to KERNELBASE.dll, which exports them
 	# and is present in every app-container process; first in the list, so
-	# they resolve here before kernel32.lib is consulted.
+	# they resolve here before kernel32.lib is consulted. Link-time only.
 	case "$ARCH_DIR" in
 	aarch64) machine=arm64 ;;
 	*) machine=i386:x86-64 ;;
