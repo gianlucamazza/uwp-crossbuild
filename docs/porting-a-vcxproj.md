@@ -193,9 +193,13 @@ gotcha list tells that story).
 
 ## What it did not prove
 
-This application has not been seen to run — only to install. What blocked
-launching for so long turned out to be client bugs, since fixed (the in-repo
-example now launches and runs on the same console: see
-[Known limits](../README.md#known-limits)), but this project itself has not
-been started since. A build that installs is not a build that works, and
-nothing here should be read as claiming otherwise.
+For six days this section said the application had only been seen to install,
+never to run. That gap closed on 2026-08-08: with the apiset reroutes of the
+README's n°23, the crossbuilt executable was started on the console and its
+own log shows `OnLaunched`, the window activated, and a GGUF model loaded
+through the inference library. What remains unproven is narrower and honest:
+the first-boot provisioning path (model not yet in `LocalState`) still dies in
+a `fire_and_forget` coroutine — an exception there is `winrt::terminate`, not
+a caught error — and a run that far outlives its launch (long inference, hours
+of uptime) has not been measured. A build that starts is not yet a build that
+ships, and nothing here should be read as claiming otherwise.

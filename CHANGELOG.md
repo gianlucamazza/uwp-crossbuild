@@ -7,7 +7,16 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
-## Unreleased
+## 0.5.1 — 2026-08-08
+
+### Changed
+
+- **The 216-TU project has now been observed running.** With this release's
+  reroutes the crossbuilt executable of the real-world port starts on the
+  Series S: its own log shows the window activated and a GGUF model loaded
+  through the inference library. README status and
+  `docs/porting-a-vcxproj.md` "What it did not prove" now say so — and say
+  what is still unproven (the first-boot provisioning path, long uptime).
 
 ### Added
 

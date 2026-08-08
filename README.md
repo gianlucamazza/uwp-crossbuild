@@ -7,8 +7,10 @@
 > been launched and observed running on an Xbox Series S dev kit — and not just
 > the example: an existing UWP project of 216 translation units, a large
 > third-party inference library among them, compiled and linked from its own
-> `.vcxproj` files **without changing a line of its source**, then packed,
-> signed and installed on the same console.
+> `.vcxproj` files **without changing a line of its source**, packed, signed,
+> installed **and observed running** on the same console — its own log shows
+> the window activated and a GGUF model loaded through the inference library
+> (2026-08-08, after the reroutes of n°23).
 > [docs/porting-a-vcxproj.md](docs/porting-a-vcxproj.md) is the recipe;
 > [Known limits](#known-limits) is the honest edge (one console, one OS build).
 
