@@ -14,7 +14,7 @@ cross-compile at all.
 ```bash
 scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
-# then, with openappx (pip install openappx)
+# then, with openappx (pipx install 'openappx>=0.6.3')
 openappx pack --root /tmp/hello-layout --out /tmp/hello.msix
 ```
 

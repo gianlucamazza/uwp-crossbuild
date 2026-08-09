@@ -29,7 +29,7 @@ scripts/build-app.sh --project examples/hello-uwp --out /tmp/hello-layout
 
 ## What this repository is
 
-A record of nineteen ways the Windows SDK and its device fail on Linux, with a
+A record of the ways the Windows SDK and its device fail on Linux, with a
 script wrapped around each. That framing decides most questions:
 
 - **Every workaround says which failure it avoids.** A flag whose purpose is not
@@ -77,7 +77,7 @@ the CHANGELOG rather than into a test that cannot run.
 ## Conventions
 
 - Scripts are bash with `set -euo pipefail`, formatted by `shfmt`. One is
-  Python, because 500 lines of MSBuild evaluator do not belong in a heredoc; it
+  Python, because a thousand-line MSBuild evaluator does not belong in a heredoc; it
   uses the standard library only, like everything else here.
 - **`scripts/common.sh` holds what must not be written twice**, and nothing
   else: the shape of an error, a download that can fail, and the layout

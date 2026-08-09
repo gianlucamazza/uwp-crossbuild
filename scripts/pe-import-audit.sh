@@ -62,7 +62,7 @@ done
 command -v llvm-readobj >/dev/null ||
 	unable "llvm-readobj not found — it ships with LLVM, beside clang-cl"
 
-# Symbols repeatedly observed on xllama crossbuild PE that fail Xbox activation
+# Symbols repeatedly observed on a real-world crossbuild PE that fail Xbox activation
 # (0x8027025b / loader), and that CI MSVC APP-CRT images do not import.
 forbidden_syms=(
 	RegOpenKeyExA

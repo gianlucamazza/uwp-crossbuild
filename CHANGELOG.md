@@ -7,6 +7,28 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
+## 0.5.2 — 2026-08-09
+
+### Fixed
+
+- **README "Next" no longer contradicts the status banner.** Its 216-TU bullet
+  still said "it was never seen launching"; 0.5.1's own banner, changelog and
+  porting doc say it was observed running. The bullet now names what actually
+  remains unproven — the first-boot provisioning path and long uptime.
+- **`UWP_CPPWINRT_INCLUDE` is documented.** It shipped in 0.5.1 with
+  validation in `build.sh` but appeared in no Environment table and no
+  changelog entry.
+
+### Changed
+
+- Docs and `pe-import-audit.sh` refer to the real-world port generically (the
+  216-TU project) instead of by a private project name.
+- CONTRIBUTING stopped counting gotchas in prose (the changelog already ruled
+  titles stop counting); `read-vcxproj.py` is no longer "500 lines" anywhere —
+  it outgrew the number, not the reason it is Python.
+- `examples/hello-uwp` installs openappx the way `run-on-device.sh` demands
+  it: `pipx install 'openappx>=0.6.3'`.
+
 ## 0.5.1 — 2026-08-08
 
 ### Changed
@@ -137,12 +159,12 @@ a specific version, and knowing which is the whole point of writing it down.
 
 - **Store `/MD` links MD static STL helpers from `msvcprt.lib`, not `libcpmt`.**
   `gen-msvcprt-app-static.sh` extracts the `.obj` members of xwin's
-  `msvcprt.lib` (filesystem, vector_algorithms, locale0, … —
+  `msvcprt.lib` (filesystem, vector*algorithms, locale0, … —
   `RuntimeLibrary=MD_DynamicRelease`) into `msvcprt_app_static.lib`.
   `--store-crt` links that archive after the `*_app` import libs so
-  `__std_fs_*` / `__std_find_*` / `_Facet_Register` resolve without mixing
-  MT `libcpmt` (FAILIFMISMATCH). Gotcha 21 rewritten. Default without the
-  opt-in remains `/MT`.
+  `\_\_std_fs*_`/`\_*std_find*_`/`\_Facet_Register`resolve without mixing
+MT`libcpmt`(FAILIFMISMATCH). Gotcha 21 rewritten. Default without the
+opt-in remains`/MT`.
 
 - **Two citations still said `README, "Fourteen things"`** — the list has been
   "Eighteen things" since 0.3.0, and the number will keep moving. The comment
