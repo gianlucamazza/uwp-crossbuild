@@ -9,7 +9,7 @@
 ; without a line of application code.
 ;
 ; The same SDK routes a further pair through minor-version apisets a Series S
-; does not expose either — observed on xllama (216 TU, store CRT): the
+; does not expose either — observed on the 216-TU project (store CRT): the
 ; crossbuilt PE imported api-ms-win-core-file-l1-2-2 (AreFileApisANSI) and
 ; api-ms-win-core-processthreads-l1-1-1 (IsProcessorFeaturePresent) and
 ; refused activation as 0x80270300, while the CI MSVC PE of the same app

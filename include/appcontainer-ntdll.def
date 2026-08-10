@@ -3,9 +3,10 @@
 ; xwin's kernel32.lib routes RtlCaptureContext, RtlLookupFunctionEntry and
 ; RtlVirtualUnwind through api-ms-win-core-rtlsupport-l1-1-0.dll, an apiset
 ; the Xbox app container does not provide: the package installs and the
-; loader refuses activation (observed as 0x80270300 / 0x8027015B on xllama,
-; Xbox OS 26100.8866). KERNELBASE cannot take them — the console's own
-; KERNELBASE export table (read from a crash dump) does not list the family.
+; loader refuses activation (observed as 0x80270300 / 0x8027015B on the
+; 216-TU project, Xbox OS 26100.8866). KERNELBASE cannot take them — the
+; console's own KERNELBASE export table (read from a crash dump) does not
+; list the family.
 ; ntdll.dll exports all three, is loaded in every process, app container
 ; included, and is not apiset-versioned. The exception machinery reaches for
 ; them in any x64 image with unwind tables — no application code involved.
