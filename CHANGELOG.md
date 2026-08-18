@@ -7,6 +7,29 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
+## 0.5.3 — 2026-08-18
+
+### Fixed
+
+- **Wine 11.15 dropped the PE32 loader**, and Microsoft ships `cppwinrt.exe`
+  as 32-bit only (still true of CppWinRT 3.0, 2026-07): every projection step
+  died at `ShellExecuteEx` with "cannot execute the application", silently,
+  after midlrt's output. The fix is a **native Linux build of the compiler** —
+  upstream microsoft/cppwinrt supports it by design and the tool is
+  deterministic per tag, so the projection matches CI's `cppwinrt.exe` at the
+  same version. New `fetch-cppwinrt-native.sh` clones the requested tag,
+  builds, verifies the binary reports that exact version, and installs it to
+  `$SDK_ROOT/cppwinrt/bin/cppwinrt` (the `.exe` stays, for older Wines).
+- `wine-tool.sh cppwinrt` now resolves: env override → native ELF → `.exe`
+  under Wine, and owns the path translation for cppwinrt's path-taking flags
+  (`-input`/`-reference`/`-output`/`-component`/`-pch`): callers pass Unix
+  paths and it applies `winepath -w` only when actually running under Wine.
+  `gen-projection.sh` passes Unix paths accordingly.
+- `makepri` now prefers the **x64** build (the 32-bit one cannot run on
+  Wine ≥ 11.15). The old x86 pin existed because x64 once faulted inside
+  MSXML6 under Wine; that fault is gone on current Wine. `UWP_MAKEPRI_X86=1`
+  forces the old behaviour for Wines where it is not.
+
 ## 0.5.2 — 2026-08-09
 
 ### Fixed
