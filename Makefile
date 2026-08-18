@@ -15,9 +15,9 @@ LIBDIR ?= $(PREFIX)/lib/uwp-crossbuild
 DOCDIR ?= $(PREFIX)/share/doc/uwp-crossbuild
 
 SCRIPTS := build.sh build-app.sh build-project.sh check-deps.sh fetch-sdk.sh \
-           fetch-vclibs.sh fix-header-case.sh gen-projection.sh \
-           gen-msvcprt-app-static.sh gen-resources.sh restore-nuget.sh \
-           run-on-device.sh wine-tool.sh pe-import-audit.sh
+           fetch-cppwinrt-native.sh fetch-vclibs.sh fix-header-case.sh \
+           gen-projection.sh gen-msvcprt-app-static.sh gen-resources.sh \
+           restore-nuget.sh run-on-device.sh wine-tool.sh pe-import-audit.sh
 # read-vcxproj.py is Python because a thousand-line MSBuild evaluator does not
 # belong in a heredoc. It is installed and exposed like the rest.
 SCRIPTS += read-vcxproj.py

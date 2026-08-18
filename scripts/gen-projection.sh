@@ -70,9 +70,12 @@ cd "$out"
 # -component is what emits App.g.h and module.g.cpp; without it cppwinrt only
 # writes the projection headers. Its argument is where the starter App.h/App.cpp
 # go, and they default out of the way because they would shadow real sources.
+# Unix paths on purpose: wine-tool.sh translates the path-taking flag values
+# itself (winepath under Wine, verbatim for the native ELF cppwinrt), so this
+# call works the same whichever cppwinrt is installed.
 "$here/wine-tool.sh" cppwinrt \
-	-input "$name.winmd" -reference "$(winepath -w "$UNION")" \
-	-output . -component "$(winepath -w "$stubs")" -prefix
+	-input "$name.winmd" -reference "$UNION" \
+	-output . -component "$stubs" -prefix
 [[ -f "$out/App.g.h" ]] || die "cppwinrt produced no App.g.h"
 
 echo "projection ready in $out"

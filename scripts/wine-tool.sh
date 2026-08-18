@@ -89,18 +89,58 @@ run_midlrt() {
 }
 
 run_makepri() {
-	# The x64 build faults inside MSXML6 under Wine; the x86 build works with the
-	# 32-bit msxml6 winetricks installs. Same output either way.
-	need_tool "$BIN_X86/makepri.exe"
-	WINEDEBUG="${WINEDEBUG:--all}" exec wine "$BIN_X86/makepri.exe" "$@"
+	# History: the x64 build used to fault inside MSXML6 under Wine, so this
+	# pinned x86 with the 32-bit msxml6 winetricks installs. Wine 11.15 dropped
+	# the 32-bit loader entirely (PE32 fails as "cannot execute"), and the x64
+	# build no longer faults on current Wine — so prefer x64 and keep x86 only
+	# as a fallback for older Wines whose x64 MSXML6 still faults.
+	local exe="$BIN_X64/makepri.exe"
+	if [[ ! -f "$exe" ]] || [[ "${UWP_MAKEPRI_X86:-}" == "1" ]]; then
+		exe="$BIN_X86/makepri.exe"
+	fi
+	need_tool "$exe"
+	WINEDEBUG="${WINEDEBUG:--all}" exec wine "$exe" "$@"
 }
 
 run_cppwinrt() {
 	# UWP_CPPWINRT_EXE, prefixed like every other override here; CPPWINRT_EXE,
-	# its original name, still works.
-	local exe="${UWP_CPPWINRT_EXE:-${CPPWINRT_EXE:-$SDK_ROOT/cppwinrt/bin/cppwinrt.exe}}"
-	[[ -f "$exe" ]] || die "cppwinrt.exe not found at $exe — run fetch-sdk.sh"
-	WINEDEBUG="${WINEDEBUG:--all}" exec wine "$exe" "$@"
+	# its original name, still works. With no override, a native ELF build of
+	# the compiler (fetch-cppwinrt-native.sh) is preferred over the NuGet
+	# cppwinrt.exe: Microsoft ships that binary as 32-bit only, and Wine 11.15
+	# dropped the PE32 loader, so on current Wine the .exe cannot run at all.
+	local exe="${UWP_CPPWINRT_EXE:-${CPPWINRT_EXE:-}}"
+	if [[ -z "$exe" ]]; then
+		if [[ -x "$SDK_ROOT/cppwinrt/bin/cppwinrt" ]]; then
+			exe="$SDK_ROOT/cppwinrt/bin/cppwinrt"
+		else
+			exe="$SDK_ROOT/cppwinrt/bin/cppwinrt.exe"
+		fi
+	fi
+	[[ -f "$exe" ]] || die "cppwinrt not found at $exe — run fetch-sdk.sh (or
+  fetch-cppwinrt-native.sh for the native build Wine ≥ 11.15 requires)"
+
+	# Contract: callers pass Unix paths. The values of cppwinrt's path-taking
+	# flags are translated per executable kind — winepath for the .exe under
+	# Wine, verbatim for a native ELF — so callers no longer care which ran.
+	local native=0
+	[[ "$(head -c4 "$exe" 2>/dev/null)" == $'\x7fELF' ]] && native=1
+	local args=() prev=""
+	local a
+	for a in "$@"; do
+		case "$prev" in
+		-input | -in | -reference | -ref | -output | -out | -component | -comp | -pch)
+			if [[ $native -eq 0 && -e "$a" ]]; then
+				a="$(win "$a")"
+			fi
+			;;
+		esac
+		prev="$a"
+		args+=("$a")
+	done
+	if [[ $native -eq 1 ]]; then
+		exec "$exe" "${args[@]}"
+	fi
+	WINEDEBUG="${WINEDEBUG:--all}" exec wine "$exe" "${args[@]}"
 }
 
 case "$tool" in
