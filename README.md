@@ -154,6 +154,10 @@ Nothing from Microsoft is redistributed: both `fetch-sdk.sh` and `xwin` download
 from Microsoft's CDN at run time under the SDK licence. CI must re-run them
 rather than cache the result in an artefact store.
 
+The full SDK build is manual: it currently needs `wine32:i386` on ubuntu-24.04
+(`winetricks -q msxml6` still cannot register MSXML6 without a 32-bit
+`regedit`); run it via `workflow_dispatch`.
+
 ## Environment
 
 Every location, version and target the scripts assume can be overridden:
