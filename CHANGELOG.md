@@ -7,6 +7,51 @@ versions of LLVM, Wine or the Windows SDK. When one of those breaks a
 workaround, that is a fix and it gets its own entry — the workaround exists for
 a specific version, and knowing which is the whole point of writing it down.
 
+## 0.5.4 — 2026-11-26
+
+### Fixed
+
+- **The compile mixed SDK versions.** xwin splats the newest SDK unless
+  `--sdk-version` names one. It always splats the newest Universal CRT, which
+  comes from a package of its own. `fetch-sdk.sh` extracts tools and metadata at
+  `UWP_SDK_VERSION` (10.0.22621.0). Visual Studio never pairs those versions.
+  UCRT 10.0.26624 declares `getenv`, `system` and `_putenv_s` for desktop apps
+  only, so code that builds under MSVC against SDK 22621 failed here (llama.cpp
+  `common.cpp` on `_putenv_s`/`_wgetenv`).
+  - `fetch-sdk.sh` now also extracts the SDK's own UCRT, and `build.sh`
+    compiles and links against it.
+  - `build.sh` refuses a splat at another SDK version, through `require_sdk` in
+    `common.sh`, and names the xwin command with the version **in full**: a
+    bare `22621` matches a component with no files. `check-deps.sh` reports the
+    same check.
+  - The README and CI splat with `--sdk-version 10.0.22621`.
+  - The `getenv`/`system` declarations in `msvc-compat.h` existed only for the
+    mismatched UCRT, so they are removed and gotcha n°7 is rewritten.
+- **`fetch-sdk.sh` can be run twice.** An administrative install onto a
+  TARGETDIR that already holds its files exits 91 under Wine 11.20. Each MSI is
+  now extracted into an empty staging directory and merged.
+- **Per-source `ClCompile` metadata was dropped.** `read-vcxproj.py` kept only
+  an item's path.
+  - A source's include path or define list is now its whole list,
+    `%(Name)` expanded where it is written, as MSBuild does. `build.sh` takes it
+    per source, in order, with the new `--source-include`/`--source-define`
+    (next to `--project-include`/`--project-define`), and compiles that source
+    without the PCH.
+  - `ExcludedFromBuild` drops the source whatever precedes it.
+  - Any other per-file setting is refused by name.
+  - Repeated defines are kept, so the last one wins, in the project's list too.
+  - `docs/porting-a-vcxproj.md` covers this, and how to move a generated source
+    out of an inline `<Target>`.
+
+**Upgrading:**
+
+1. Re-splat with `--sdk-version 10.0.22621`, then run
+   `fix-header-case.sh --canonical`.
+2. Re-run `fetch-sdk.sh`.
+3. Re-run `gen-msvcprt-app-static.sh`.
+
+`build.sh` and `check-deps.sh` say which step is missing.
+
 ## 0.5.3 — 2026-08-18
 
 ### Fixed
