@@ -28,13 +28,16 @@ CPPWINRT_VERSION="${UWP_CPPWINRT_VERSION:-}"
 CPPWINRT_FALLBACK="2.0.250303.1"
 XWIN_ROOT="${UWP_XWIN_ROOT:-$HOME/.cache/uwp-crossbuild/xwin}"
 
-# Only these four MSIs matter. The full layout is ~1.1 GB; these hold the tools,
-# the platform metadata and the IDL/headers midlrt includes.
+# Only these five MSIs matter. The full layout is ~1.1 GB; these hold the tools,
+# the platform metadata, the IDL/headers midlrt includes, and the Universal CRT
+# this SDK pairs with. xwin's UCRT is the newest, whatever SDK it splats, and
+# a newer one declares getenv and _putenv_s for desktop apps only (README n°7).
 MSIS=(
 	"Windows SDK for Windows Store Apps Tools-x86_en-us.msi"     # midlrt, makepri, makeappx
 	"Windows SDK for Windows Store Apps Headers-x86_en-us.msi"   # winrtbase.idl and friends
 	"Windows SDK for Windows Store Apps Contracts-x86_en-us.msi" # *.Contract.winmd
 	"Windows SDK Facade Windows WinMD Versioned-x86_en-us.msi"   # UnionMetadata/Windows.winmd
+	"Universal CRT Headers Libraries and Sources-x86_en-us.msi"  # Include and Lib /ucrt
 )
 
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
@@ -52,6 +55,9 @@ command -v curl >/dev/null || die "curl is required"
 # MAX_PATH: tools receive Windows paths, and anything past 260 characters is
 # silently truncated. Keep the cache shallow and fail early if it is not.
 [[ ${#SDK_ROOT} -lt 80 ]] || die "UWP_SDK_ROOT is too long (${#SDK_ROOT} chars): $SDK_ROOT"
+# Each MSI is extracted here first, so the same bound applies.
+STAGE="$WORK/stage"
+[[ ${#STAGE} -lt 80 ]] || die "UWP_SDK_WORK is too long (${#STAGE} chars with /stage): $WORK"
 
 mkdir -p "$WORK" "$SDK_ROOT"
 
@@ -80,12 +86,23 @@ for msi in "${MSIS[@]}"; do
 	# TARGETDIR\home\you\... — directories that do not exist — and the install
 	# dies on its first file with ERROR_PATH_NOT_FOUND, naming neither the path
 	# nor the reason. Observed with Wine 11.14 and SDK 10.0.22621.
+	#
+	# Into an empty directory each time, then merged: an administrative install
+	# onto a TARGETDIR that already holds its files fails (msiexec exits 91,
+	# Wine 11.20), so a second run — the one a new MSI in this list needs —
+	# died on the first package it had already extracted.
+	rm -rf "$STAGE"
+	mkdir -p "$STAGE"
 	WINEDEBUG=-all wine msiexec /a "$(winepath -w "$WORK/layout/Installers/$msi")" /qn \
-		TARGETDIR="$(winepath -w "$SDK_ROOT")" >"$log" 2>&1 ||
+		TARGETDIR="$(winepath -w "$STAGE")" >"$log" 2>&1 ||
 		die "administrative install failed for $msi
 $(tail -20 "$log")
   full log: $log"
+	[[ -d "$STAGE/Windows Kits" ]] || die "the administrative install of $msi wrote no Windows Kits
+  full log: $log"
+	cp -a "$STAGE/Windows Kits" "$SDK_ROOT/"
 done
+rm -rf "$STAGE"
 
 # An SDK version that does not match what the installer laid down produces no
 # error here — the symlink loop below just finds nothing and midlrt fails much

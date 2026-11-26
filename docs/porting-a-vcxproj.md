@@ -43,6 +43,26 @@ Properties with conditions, `Exists()`, per-configuration
 `Exclude`, NuGet `.props` imports, `ProjectReference`, `DeploymentContent` —
 all of it, because a real project uses all of it.
 
+So is metadata on a single `ClCompile` item. An include path or define list
+there is that source's whole list, as MSBuild evaluates it:
+`%(AdditionalIncludeDirectories)` or `%(PreprocessorDefinitions)` stands for the
+project's list at the position it is written, so `here;%(…)` searches `here`
+first and `%(…);MODE=1` defines `MODE` last, and a list without it replaces
+the project's for that file. `build.sh --source-include` and
+`--source-define` take it per source, in order (`--field source_args` shows
+it), and such a source is compiled without the PCH, which was built with the
+project's lists. `ExcludedFromBuild` drops the source under the configuration
+it names. Any other per-file setting would compile that file differently from
+how it is compiled here, and is refused by name rather than dropped.
+
+What is refused outright is an MSBuild _action_: an inline `<Target>` that runs
+`<Exec>`, or a property function such as `$([System.IO.Path]::Combine(…))`.
+When a project generates a source that way (a version header, a build-info
+file), move the target into a `.targets` file the project imports, and have the
+script that calls `build-project.sh` run the same generator into the same
+directory first. MSBuild keeps running the target; this toolchain lists the
+`.targets` under "skipped" and finds the file already there.
+
 `--property NAME=VALUE` is MSBuild's `/p:`, and it matters more than it looks:
 a project's own switches live there, and one of them can decide whether a
 `ProjectReference` exists at all. A backend selected by a property is a

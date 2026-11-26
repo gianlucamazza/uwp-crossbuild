@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Per-source ClCompile metadata: added to the project's, dropped, or inert. -->
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><ConfigurationType>StaticLibrary</ConfigurationType></PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>EVERYWHERE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="plain.cpp" />
+    <ClCompile Include="own.cpp">
+      <AdditionalIncludeDirectories>only\here;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>ONLY_HERE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)%(RelativeDir)own_cxx.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="appended.cpp">
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);MODE=1</PreprocessorDefinitions>
+    </ClCompile>
+    <!-- The last definition wins, so a repeat is not a duplicate. -->
+    <ClCompile Include="repeats.cpp">
+      <PreprocessorDefinitions>MODE=0;MODE=1;MODE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <!-- Excluded: what it says before the exclusion does not matter. -->
+    <ClCompile Include="excluded.cpp">
+      <Optimization>Disabled</Optimization>
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="other-config.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)' == 'Debug'">true</ExcludedFromBuild>
+    </ClCompile>
+  </ItemGroup>
+</Project>

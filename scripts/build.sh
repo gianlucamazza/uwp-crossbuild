@@ -2,6 +2,8 @@
 # build.sh — compile C++/WinRT sources into a Windows PE, from Linux.
 #
 #   build.sh --out app.exe [--uwp] [--pch pch.h] [--jobs N] [-I DIR] \
+#            [--project-include DIR] [--project-define D] \
+#            [--source-include SRC DIR] [--source-define SRC D] \
 #            [--link-arg X] src/*.cpp [-- extra clang-cl args]
 #
 #     --uwp        build for the app container. Sets WINAPI_FAMILY=APP at
@@ -23,6 +25,19 @@
 #                  it: including the XAML projection costs ~32 s per translation
 #                  unit, ~1 s through a PCH (measured, see README).
 #     --jobs       parallel compiles (default: nproc)
+#     --project-include, --project-define
+#                  a Visual Studio project's include path and define lists
+#                  (repeatable, in order). They apply to every source, and to
+#                  the PCH, unless the source has its own list.
+#     --source-include SRC DIR, --source-define SRC D
+#                  one source's own list (repeatable, in order), which replaces
+#                  the project's for that source: what MSBuild makes of a
+#                  per-file <AdditionalIncludeDirectories> or
+#                  <PreprocessorDefinitions>, %(Name) expanded in place. An
+#                  empty DIR or D gives the source an empty list. Such a source
+#                  is compiled without the PCH, which was built with the
+#                  project's lists. SRC must be spelled as it is among the
+#                  sources.
 #     --link-arg   pass one argument straight to lld-link (repeatable)
 #     --static-lib archive the objects into a .lib instead of linking an
 #                  executable. What a Visual Studio project marked
@@ -33,7 +48,8 @@
 # C and C++ sources can be given together: a .c file is compiled as C, with
 # UWP_C_STD, and everything else as C++ with UWP_CXX_STD.
 #
-# Wraps clang-cl and lld-link with the include and library paths xwin produces,
+# Wraps clang-cl and lld-link with the include and library paths xwin and
+# fetch-sdk.sh produce (the UCRT is the SDK's own, see sdk_problem in common.sh),
 # plus the settings a C++/WinRT build cannot do without. See README.md.
 set -euo pipefail
 
@@ -51,6 +67,9 @@ here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 # shellcheck source=scripts/common.sh
 . "$here/common.sh"
 
+SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
+SDK_VERSION="${UWP_SDK_VERSION:-$UWP_SDK_VERSION_DEFAULT}"
+
 out=""
 pch=""
 jobs="$(nproc 2>/dev/null || echo 4)"
@@ -61,6 +80,11 @@ sources=()
 extra=()
 link_args=()
 include_dirs=()
+project_includes=()
+project_defines=()
+# One source's own lists, newline-terminated entries: a path can hold a space,
+# never a newline. A key that exists with no entry is an empty list.
+declare -A source_includes=() source_defines=()
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -73,6 +97,18 @@ while [[ $# -gt 0 ]]; do
 	--static-lib) static_lib=1 && shift ;;
 	-I | --include) value "$1" $# "${2:-}" && include_dirs+=("/I$2") && shift 2 ;;
 	--link-arg) value "$1" $# "${2:-}" && link_args+=("$2") && shift 2 ;;
+	--project-include) value "$1" $# "${2:-}" && project_includes+=("/I$2") && shift 2 ;;
+	--project-define) value "$1" $# "${2:-}" && project_defines+=("/D$2") && shift 2 ;;
+	--source-include | --source-define)
+		value "$1" $# "${2:-}"
+		[[ $# -ge 3 && "$3" != --* ]] || die "$1 needs a source and a value"
+		if [[ "$1" == --source-include ]]; then
+			source_includes[$2]+="${3:+/I$3$'\n'}"
+		else
+			source_defines[$2]+="${3:+/D$3$'\n'}"
+		fi
+		shift 3
+		;;
 	--)
 		shift
 		extra=("$@")
@@ -85,6 +121,12 @@ done
 [[ -n "$out" ]] || die "--out is required"
 [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || die "--jobs must be a positive integer, got: $jobs"
 [[ ${#sources[@]} -gt 0 ]] || die "no source files given"
+# A list for a source that is not compiled would be dropped without a word.
+for src in "${!source_includes[@]}" "${!source_defines[@]}"; do
+	listed=0
+	for candidate in "${sources[@]}"; do [[ "$candidate" == "$src" ]] && listed=1 && break; done
+	[[ $listed -eq 1 ]] || die "--source-include/--source-define name $src, which is not among the sources"
+done
 # Anything unrecognised is taken as a source, so a glued `-I/path` — the form
 # clang-cl itself accepts — would be handed to the compiler as a file. Check
 # here, where the error can say which argument was wrong.
@@ -116,6 +158,9 @@ if [[ $store_crt -eq 1 ]]; then
 	done
 fi
 [[ -d "$XWIN_ROOT/crt/include" ]] || die "no CRT at $XWIN_ROOT — run fetch-sdk.sh"
+# The SDK headers from xwin and the UCRT from fetch-sdk.sh, both at
+# UWP_SDK_VERSION; see sdk_problem in common.sh.
+require_sdk "$XWIN_ROOT" "$SDK_ROOT" "$SDK_VERSION" "$ARCH_DIR"
 command -v clang-cl >/dev/null || die "clang-cl not found"
 [[ $static_lib -eq 0 ]] || command -v llvm-lib >/dev/null ||
 	die "llvm-lib not found — it ships with LLVM, beside clang-cl"
@@ -143,18 +188,19 @@ common=(
 	-target "$TARGET" /W3
 	"/FI$compat"
 	/imsvc "$XWIN_ROOT/crt/include"
-	/imsvc "$XWIN_ROOT/sdk/include/ucrt"
+	/imsvc "$SDK_UCRT_INCLUDE"
 	/imsvc "$XWIN_ROOT/sdk/include/um"
 	/imsvc "$XWIN_ROOT/sdk/include/shared"
 	/imsvc "$XWIN_ROOT/sdk/include/winrt"
 	${cppwinrt_inc[@]+"${cppwinrt_inc[@]}"}
 	/imsvc "$XWIN_ROOT/sdk/include/cppwinrt"
-	${include_dirs[@]+"${include_dirs[@]}"}
 )
+# -I directories come after the project's include path, as they always have:
+# the project's list, or a source's own, is searched first.
 libs=(
 	/libpath:"$XWIN_ROOT/crt/lib/$ARCH_DIR"
 	/libpath:"$XWIN_ROOT/sdk/lib/um/$ARCH_DIR"
-	/libpath:"$XWIN_ROOT/sdk/lib/ucrt/$ARCH_DIR"
+	/libpath:"$SDK_UCRT_LIB"
 	# WINRT_IMPL_* (CoInitializeEx, RoOriginateLanguageException, …) live here.
 	WindowsApp.lib
 )
@@ -265,7 +311,10 @@ if [[ -n "$pch" ]]; then
 	if [[ ! -f "$pchfile" || "$pch" -nt "$pchfile" || "$compat" -nt "$pchfile" ]]; then
 		echo "  precompiling $(basename "$pch")"
 		printf '#include "%s"\n' "$(basename "$pch")" >"$objdir/pch.cpp"
-		clang-cl "${common[@]}" "${cxx[@]}" ${extra[@]+"${extra[@]}"} /c "$objdir/pch.cpp" \
+		clang-cl "${common[@]}" ${project_includes[@]+"${project_includes[@]}"} \
+			${include_dirs[@]+"${include_dirs[@]}"} ${project_defines[@]+"${project_defines[@]}"} \
+			"${cxx[@]}" ${extra[@]+"${extra[@]}"} \
+			/c "$objdir/pch.cpp" \
 			"/Yc$(basename "$pch")" "/Fp$pchfile" "/Fo$objdir/pch.obj" \
 			"/I$(cd "$(dirname "$pch")" && pwd)"
 	fi
@@ -294,10 +343,28 @@ for src in "${sources[@]}"; do
 	crc=$(printf %s "$src" | cksum)
 	obj="$objdir/${flat//\//_}.${crc%% *}.obj"
 	objects+=("$obj")
-	# A C source takes neither the C++ standard nor the C++ precompiled header.
-	lang=("${cxx[@]}" ${pch_args[@]+"${pch_args[@]}"})
+	# The project's lists, or the source's own in their place.
+	includes=(${project_includes[@]+"${project_includes[@]}"})
+	defines=(${project_defines[@]+"${project_defines[@]}"})
+	own=0
+	if [[ -v "source_includes[$src]" ]]; then
+		includes=()
+		[[ -z "${source_includes[$src]}" ]] || mapfile -t includes <<<"${source_includes[$src]%$'\n'}"
+		own=1
+	fi
+	if [[ -v "source_defines[$src]" ]]; then
+		defines=()
+		[[ -z "${source_defines[$src]}" ]] || mapfile -t defines <<<"${source_defines[$src]%$'\n'}"
+		own=1
+	fi
+	# A C source takes neither the C++ standard nor the C++ precompiled header,
+	# and neither does a source with lists of its own: the PCH was built with
+	# the project's, and would hand it declarations made under other defines.
+	lang=("${cxx[@]}")
+	[[ $own -eq 1 ]] || lang+=(${pch_args[@]+"${pch_args[@]}"})
 	[[ "$src" == *.c ]] && lang=("/std:$C_STD")
-	clang-cl "${common[@]}" "${lang[@]}" ${extra[@]+"${extra[@]}"} /c "$src" -o "$obj" &
+	clang-cl "${common[@]}" ${includes[@]+"${includes[@]}"} ${include_dirs[@]+"${include_dirs[@]}"} \
+		${defines[@]+"${defines[@]}"} "${lang[@]}" ${extra[@]+"${extra[@]}"} /c "$src" -o "$obj" &
 	pids+=($!)
 	# A plain `wait -n` loop would be neater but needs bash 4.3+ semantics that
 	# differ across the versions in the wild; batching is enough here.
