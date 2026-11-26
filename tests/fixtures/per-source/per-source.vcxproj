@@ -18,6 +18,10 @@
     <ClCompile Include="appended.cpp">
       <PreprocessorDefinitions>%(PreprocessorDefinitions);MODE=1</PreprocessorDefinitions>
     </ClCompile>
+    <!-- The last definition wins, so a repeat is not a duplicate. -->
+    <ClCompile Include="repeats.cpp">
+      <PreprocessorDefinitions>MODE=0;MODE=1;MODE=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
     <!-- Excluded: what it says before the exclusion does not matter. -->
     <ClCompile Include="excluded.cpp">
       <Optimization>Disabled</Optimization>

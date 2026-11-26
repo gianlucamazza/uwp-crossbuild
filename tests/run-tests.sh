@@ -662,6 +662,9 @@ succeeds_with "a define written before %(PreprocessorDefinitions) comes first" \
 succeeds_with "a define written after %(PreprocessorDefinitions) comes last" \
 	"appended.cpp${tab}define${tab}EVERYWHERE"$'\n'"appended.cpp${tab}define${tab}MODE=1" \
 	"$read_vcxproj" "$per_source" --field source_args
+succeeds_with "a repeated define is kept, so the last one still wins" \
+	"repeats.cpp${tab}define${tab}MODE=0"$'\n'"repeats.cpp${tab}define${tab}MODE=1"$'\n'"repeats.cpp${tab}define${tab}MODE=0" \
+	"$read_vcxproj" "$per_source" --field source_args
 lacks "a source with no metadata of its own keeps the project's lists" "plain.cpp" \
 	"$read_vcxproj" "$per_source" --field source_args
 lacks "ObjectFileName on a source is inert" "own_cxx" \

@@ -611,10 +611,16 @@ class Evaluator:
             into[name] = " ".join(value.split())
 
 
+def semicolon_items(value):
+    """Every entry, in order, repeats kept."""
+    return [part.strip() for part in value.replace("\n", ";").split(";") if part.strip()]
+
+
 def semicolon_list(value):
-    return unique(
-        [part.strip() for part in value.replace("\n", ";").split(";") if part.strip()]
-    )
+    """Every entry, in order, repeats dropped: for a search path or a set of
+    names, where the first occurrence is the one that counts. Not for defines,
+    where the last one wins: MODE=0;MODE=1;MODE=0 defines MODE as 0."""
+    return unique(semicolon_items(value))
 
 
 def unique(values):
@@ -796,8 +802,9 @@ class Description:
                     f"reproduced here"
                 )
             inherited = self.evaluator.clcompile.get(name, "")
-            effective = semicolon_list(value.replace(f"%({name})", f";{inherited};"))
+            effective = semicolon_items(value.replace(f"%({name})", f";{inherited};"))
             if kind == "include":
+                effective = unique(effective)
                 effective = [
                     self._relative(self.directory / windows_path(entry))
                     for entry in effective
@@ -823,7 +830,7 @@ class Description:
                 settings.pop("AdditionalIncludeDirectories", "")
             )
         ]
-        defines = semicolon_list(settings.pop("PreprocessorDefinitions", ""))
+        defines = semicolon_items(settings.pop("PreprocessorDefinitions", ""))
 
         for name, value in list(settings.items()):
             if name in IGNORED_CLCOMPILE:
