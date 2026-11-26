@@ -202,6 +202,13 @@ fails_with "a source that does not exist is refused" "no such source file" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe "-I$tmp"
 fails_with "a flag with no value says so" "--out needs a value" \
 	"$scripts/build.sh" --out
+# A per-source argument for a file that is not compiled would vanish silently.
+fails_with "--source-arg for a source that is not compiled" "not among the sources" \
+	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe \
+	--source-arg "$tmp/other.cpp" /DX "$tmp/a.cpp"
+fails_with "--source-arg needs a source and an argument" "needs a source and an argument" \
+	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe \
+	--source-arg "$tmp/a.cpp"
 fails_with "--jobs takes a positive integer" "--jobs must be a positive integer" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe --jobs 0 "$tmp/a.cpp"
 # An archive has no DllCharacteristics: /appcontainer is link-only. But a UWP
@@ -640,6 +647,28 @@ fails_with "a linker asked to write the winmd" "gen-projection.sh" \
 	"$read_vcxproj" "$refused/generate-winmd.vcxproj"
 fails_with "a project that is not there" "no such project" \
 	"$read_vcxproj" "$refused/absent.vcxproj"
+# Per-source metadata: an include path or define that keeps %(Name) adds to the
+# project's for that source; ExcludedFromBuild drops the source under the
+# configuration it names; a replacement, or any other setting, is refused.
+per_source="$here/fixtures/per-source/per-source.vcxproj"
+succeeds_with "a per-source include path reaches that source only" \
+	"own.cpp"$'\t'"include"$'\t'"only/here" \
+	"$read_vcxproj" "$per_source" --field source_args
+succeeds_with "a per-source define reaches that source only" \
+	"own.cpp"$'\t'"define"$'\t'"ONLY_HERE=1" \
+	"$read_vcxproj" "$per_source" --field source_args
+lacks "ObjectFileName on a source is inert" "own_cxx" \
+	"$read_vcxproj" "$per_source" --field source_args
+lacks "ExcludedFromBuild drops the source" "excluded.cpp" \
+	"$read_vcxproj" "$per_source" --field sources.cpp
+succeeds_with "an exclusion conditioned on another configuration keeps it" "other-config.cpp" \
+	"$read_vcxproj" "$per_source" --field sources.cpp
+lacks "the same exclusion under its configuration drops it" "other-config.cpp" \
+	"$read_vcxproj" "$per_source" --config Debug --field sources.cpp
+fails_with "a per-source list that replaces the project's" "keep %(AdditionalIncludeDirectories)" \
+	"$read_vcxproj" "$refused/per-source-replaces.vcxproj"
+fails_with "a compiler setting on one source" "<Optimization> on a single source" \
+	"$read_vcxproj" "$refused/per-source-setting.vcxproj"
 # The OS activates what the manifest names. A package whose executable is called
 # something else installs, then fails to launch, and reads as an application bug.
 fails_with "a manifest that starts another executable" "would install and fail to launch" \

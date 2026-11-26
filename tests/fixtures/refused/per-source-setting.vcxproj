@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A compiler setting on one source only: not reproduced, so refused. -->
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><ConfigurationType>StaticLibrary</ConfigurationType></PropertyGroup>
+  <ItemGroup>
+    <ClCompile Include="a.cpp">
+      <Optimization>Disabled</Optimization>
+    </ClCompile>
+  </ItemGroup>
+</Project>

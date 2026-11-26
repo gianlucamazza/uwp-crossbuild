@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Per-source ClCompile metadata: added to the project's, dropped, or inert. -->
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><ConfigurationType>StaticLibrary</ConfigurationType></PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>EVERYWHERE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="plain.cpp" />
+    <ClCompile Include="own.cpp">
+      <AdditionalIncludeDirectories>only\here;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>ONLY_HERE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ObjectFileName>$(IntDir)%(RelativeDir)own_cxx.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="excluded.cpp">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="other-config.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)' == 'Debug'">true</ExcludedFromBuild>
+    </ClCompile>
+  </ItemGroup>
+</Project>

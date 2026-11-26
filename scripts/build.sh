@@ -2,7 +2,7 @@
 # build.sh — compile C++/WinRT sources into a Windows PE, from Linux.
 #
 #   build.sh --out app.exe [--uwp] [--pch pch.h] [--jobs N] [-I DIR] \
-#            [--link-arg X] src/*.cpp [-- extra clang-cl args]
+#            [--source-arg SRC ARG] [--link-arg X] src/*.cpp [-- extra clang-cl args]
 #
 #     --uwp        build for the app container. Sets WINAPI_FAMILY=APP at
 #                  compile time (VS parity). For an executable also links
@@ -23,6 +23,9 @@
 #                  it: including the XAML projection costs ~32 s per translation
 #                  unit, ~1 s through a PCH (measured, see README).
 #     --jobs       parallel compiles (default: nproc)
+#     --source-arg one clang-cl argument for one source only (repeatable): a
+#                  Visual Studio project's per-file include path or define.
+#                  SRC must be spelled as it is among the sources.
 #     --link-arg   pass one argument straight to lld-link (repeatable)
 #     --static-lib archive the objects into a .lib instead of linking an
 #                  executable. What a Visual Studio project marked
@@ -65,6 +68,9 @@ sources=()
 extra=()
 link_args=()
 include_dirs=()
+# One source's own clang-cl arguments, newline-separated: a path can hold a
+# space, never a newline.
+declare -A source_args=()
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -77,6 +83,12 @@ while [[ $# -gt 0 ]]; do
 	--static-lib) static_lib=1 && shift ;;
 	-I | --include) value "$1" $# "${2:-}" && include_dirs+=("/I$2") && shift 2 ;;
 	--link-arg) value "$1" $# "${2:-}" && link_args+=("$2") && shift 2 ;;
+	--source-arg)
+		value "$1" $# "${2:-}"
+		[[ $# -ge 3 && -n "$3" && "$3" != --* ]] || die "--source-arg needs a source and an argument"
+		source_args[$2]+="$3"$'\n'
+		shift 3
+		;;
 	--)
 		shift
 		extra=("$@")
@@ -89,6 +101,12 @@ done
 [[ -n "$out" ]] || die "--out is required"
 [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || die "--jobs must be a positive integer, got: $jobs"
 [[ ${#sources[@]} -gt 0 ]] || die "no source files given"
+# An argument for a source that is not compiled would be dropped without a word.
+for src in "${!source_args[@]}"; do
+	listed=0
+	for candidate in "${sources[@]}"; do [[ "$candidate" == "$src" ]] && listed=1 && break; done
+	[[ $listed -eq 1 ]] || die "--source-arg names $src, which is not among the sources"
+done
 # Anything unrecognised is taken as a source, so a glued `-I/path` — the form
 # clang-cl itself accepts — would be handed to the compiler as a file. Check
 # here, where the error can say which argument was wrong.
@@ -304,7 +322,10 @@ for src in "${sources[@]}"; do
 	# A C source takes neither the C++ standard nor the C++ precompiled header.
 	lang=("${cxx[@]}" ${pch_args[@]+"${pch_args[@]}"})
 	[[ "$src" == *.c ]] && lang=("/std:$C_STD")
-	clang-cl "${common[@]}" "${lang[@]}" ${extra[@]+"${extra[@]}"} /c "$src" -o "$obj" &
+	own=()
+	[[ -z "${source_args[$src]:-}" ]] || mapfile -t own <<<"${source_args[$src]%$'\n'}"
+	clang-cl "${common[@]}" "${lang[@]}" ${own[@]+"${own[@]}"} ${extra[@]+"${extra[@]}"} \
+		/c "$src" -o "$obj" &
 	pids+=($!)
 	# A plain `wait -n` loop would be neater but needs bash 4.3+ semantics that
 	# differ across the versions in the wild; batching is enough here.

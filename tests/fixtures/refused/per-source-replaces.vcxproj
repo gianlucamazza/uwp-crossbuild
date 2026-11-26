@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A per-source include list without %(AdditionalIncludeDirectories): it
+     replaces the project's for that source, which build.sh cannot express. -->
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><ConfigurationType>StaticLibrary</ConfigurationType></PropertyGroup>
+  <ItemGroup>
+    <ClCompile Include="a.cpp">
+      <AdditionalIncludeDirectories>only\here</AdditionalIncludeDirectories>
+    </ClCompile>
+  </ItemGroup>
+</Project>

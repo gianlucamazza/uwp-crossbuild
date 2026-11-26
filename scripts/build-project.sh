@@ -258,6 +258,17 @@ build_project() { # build_project <project> <output path> <static|application>
 	for entry in ${listed[@]+"${listed[@]}"}; do passthrough+=("/D$entry"); done
 	read_field listed "$vcxproj" options
 	for entry in ${listed[@]+"${listed[@]}"}; do passthrough+=("$entry"); done
+	# One source's own include path or define (source<TAB>kind<TAB>value).
+	local own_source own_kind own_value
+	read_field listed "$vcxproj" source_args
+	for entry in ${listed[@]+"${listed[@]}"}; do
+		IFS=$'\t' read -r own_source own_kind own_value <<<"$entry"
+		case "$own_kind" in
+		include) arguments+=(--source-arg "$directory/$own_source" "/I$directory/$own_value") ;;
+		define) arguments+=(--source-arg "$directory/$own_source" "/D$own_value") ;;
+		*) die "$vcxproj: unknown per-source argument kind: $own_kind" ;;
+		esac
+	done
 
 	local pch
 	pch="$(field "$vcxproj" pch)" || die "cannot read pch from $vcxproj"
