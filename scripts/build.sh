@@ -33,7 +33,8 @@
 # C and C++ sources can be given together: a .c file is compiled as C, with
 # UWP_C_STD, and everything else as C++ with UWP_CXX_STD.
 #
-# Wraps clang-cl and lld-link with the include and library paths xwin produces,
+# Wraps clang-cl and lld-link with the include and library paths xwin and
+# fetch-sdk.sh produce (the UCRT is the SDK's own, see sdk_problem in common.sh),
 # plus the settings a C++/WinRT build cannot do without. See README.md.
 set -euo pipefail
 
@@ -50,6 +51,9 @@ here="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 # shellcheck source=scripts/common.sh
 . "$here/common.sh"
+
+SDK_ROOT="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
+SDK_VERSION="${UWP_SDK_VERSION:-$UWP_SDK_VERSION_DEFAULT}"
 
 out=""
 pch=""
@@ -116,6 +120,9 @@ if [[ $store_crt -eq 1 ]]; then
 	done
 fi
 [[ -d "$XWIN_ROOT/crt/include" ]] || die "no CRT at $XWIN_ROOT — run fetch-sdk.sh"
+# The SDK headers from xwin and the UCRT from fetch-sdk.sh, both at
+# UWP_SDK_VERSION; see sdk_problem in common.sh.
+require_sdk "$XWIN_ROOT" "$SDK_ROOT" "$SDK_VERSION" "$ARCH_DIR"
 command -v clang-cl >/dev/null || die "clang-cl not found"
 [[ $static_lib -eq 0 ]] || command -v llvm-lib >/dev/null ||
 	die "llvm-lib not found — it ships with LLVM, beside clang-cl"
@@ -143,7 +150,7 @@ common=(
 	-target "$TARGET" /W3
 	"/FI$compat"
 	/imsvc "$XWIN_ROOT/crt/include"
-	/imsvc "$XWIN_ROOT/sdk/include/ucrt"
+	/imsvc "$SDK_UCRT_INCLUDE"
 	/imsvc "$XWIN_ROOT/sdk/include/um"
 	/imsvc "$XWIN_ROOT/sdk/include/shared"
 	/imsvc "$XWIN_ROOT/sdk/include/winrt"
@@ -154,7 +161,7 @@ common=(
 libs=(
 	/libpath:"$XWIN_ROOT/crt/lib/$ARCH_DIR"
 	/libpath:"$XWIN_ROOT/sdk/lib/um/$ARCH_DIR"
-	/libpath:"$XWIN_ROOT/sdk/lib/ucrt/$ARCH_DIR"
+	/libpath:"$SDK_UCRT_LIB"
 	# WINRT_IMPL_* (CoInitializeEx, RoOriginateLanguageException, …) live here.
 	WindowsApp.lib
 )

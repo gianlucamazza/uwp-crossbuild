@@ -43,11 +43,12 @@ scripts/check-deps.sh                                  # what is missing, before
 # it installs, and pinning cppwinrt.exe to anything else fails every build.
 # --cache-dir, or xwin leaves a 424 MB .xwin-cache in whatever directory you
 # happened to be in — the project you are building, usually.
-xwin --accept-license --arch x86_64 \
+# --sdk-version: the SDK fetch-sdk.sh extracts (UWP_SDK_VERSION, n°7), in full.
+xwin --accept-license --arch x86_64 --sdk-version 10.0.22621 \
   --cache-dir ~/.cache/uwp-crossbuild/xwin-download \
   splat --output ~/.cache/uwp-crossbuild/xwin
 scripts/fix-header-case.sh ~/.cache/uwp-crossbuild/xwin/sdk/include/cppwinrt/winrt --canonical
-scripts/fetch-sdk.sh                                   # SDK tools, ~1.1 GB, cached
+scripts/fetch-sdk.sh                                   # SDK tools and UCRT, ~1.1 GB, cached
 
 # a console program, to check the toolchain end to end
 scripts/build.sh --out hello.exe examples/hello-winrt/app.cpp
@@ -233,16 +234,20 @@ this is the record of why they exist.
    translation unit, so a source tree written for Visual Studio compiles
    unmodified. That is where this and `GetCurrentTime` live.
 
-7. **`<cstdlib>` under `WINAPI_FAMILY_APP` needs a compile-time bridge.** `--uwp`
-   sets `/DWINAPI_FAMILY=WINAPI_FAMILY_APP` (same as Visual Studio UWP) so the
-   headers keep desktop-only Win32 and CRT out of the compile. The ucrt then
-   gates `getenv`/`system` on `_CRT_USE_WINAPI_FAMILY_DESKTOP_APP`, while the
-   MSVC STL still does `using _CSTD getenv;` / `using _CSTD system;`
-   unconditionally — every TU that includes `<cstdlib>` fails with "no member
-   named 'getenv'". `include/msvc-compat.h` provides C declarations for those
-   two names under non-desktop families so the `using` resolves. Declaration
-   only: no bodies, no re-opened desktop partition, no license to call them in
-   an AppContainer.
+7. **The UCRT has to be the SDK's own.** `--uwp` sets
+   `/DWINAPI_FAMILY=WINAPI_FAMILY_APP` (same as Visual Studio UWP) so the
+   headers keep desktop-only Win32 out of the compile. xwin always splats the
+   newest Universal CRT, from a package of its own, whatever `--sdk-version`
+   says. UCRT 10.0.26624 declares `getenv`, `system` and `_putenv_s` for the
+   desktop family only, while the MSVC STL still does `using _CSTD getenv;`:
+   every TU that includes `<cstdlib>` fails with "no member named 'getenv'".
+   The UCRT inside SDK 10.0.22621, the one Visual Studio pairs with that SDK,
+   declares all three for apps. `fetch-sdk.sh` extracts it from the same
+   installer as the tools, `build.sh` compiles against it, and a splat at
+   another SDK version is refused with the `xwin` command that fixes it. xwin
+   selects the SDK by package name, so give the version in full:
+   `--sdk-version 10.0.22621` (plain `22621` matches a component with no
+   files).
 
 ### The SDK tools
 

@@ -65,6 +65,24 @@ else
 	missing+=(msxml6)
 fi
 
+# Only once the downloads exist: before them, xwin and fetch-sdk.sh are what the
+# report above already names. After them, a splat at another SDK version is a
+# build that fails on headers Visual Studio never pairs (README n°7). The report
+# must still complete when common.sh could not be read (no coreutils on PATH),
+# so this part needs its helper rather than assuming it.
+xwin_root="${UWP_XWIN_ROOT:-$HOME/.cache/uwp-crossbuild/xwin}"
+sdk_root="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}"
+sdk_version="${UWP_SDK_VERSION:-${UWP_SDK_VERSION_DEFAULT:-}}"
+if [[ -d "$xwin_root/sdk/include" && -n "$sdk_version" ]] && declare -F sdk_problem >/dev/null; then
+	problem=$(sdk_problem "$xwin_root" "$sdk_root" "$sdk_version" "${UWP_ARCH_DIR:-x86_64}")
+	if [[ -z "$problem" ]]; then
+		printf '  \033[32m✓\033[0m %-12s %s, xwin and fetch-sdk.sh agree\n' sdk "$sdk_version"
+	else
+		printf '  \033[31m✗\033[0m %-12s %s\n' sdk "$problem"
+		missing+=(sdk)
+	fi
+fi
+
 # Informational, never counted as missing: building needs none of it. It is
 # what carries the layout to a console — pack, sign, install, launch — and a
 # machine that only compiles is complete without it.

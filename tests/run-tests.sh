@@ -172,6 +172,30 @@ fails_with "--out is required" "--out is required" "$scripts/build.sh" "$tmp/a.c
 fails_with "sources are required" "no source files" "$scripts/build.sh" --out a.exe
 fails_with "a missing CRT names fetch-sdk.sh" "run fetch-sdk.sh" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe "$tmp/a.cpp"
+# One SDK version for the compile (gotcha 7). A splat at another version names
+# the xwin command, version in full; the right splat without fetch-sdk.sh's
+# UCRT names fetch-sdk.sh; both present passes the gate.
+sdkfx="$(mktemp -d)"
+mkdir -p "$sdkfx/xwin/crt/include" "$sdkfx/xwin/sdk/include"
+ln -s . "$sdkfx/xwin/sdk/include/10.0.26100"
+fails_with "a splat at another SDK version names --sdk-version in full" \
+	"--sdk-version 10.0.22621" \
+	env UWP_XWIN_ROOT="$sdkfx/xwin" UWP_SDK_ROOT="$sdkfx/sdk" UWP_SDK_VERSION=10.0.22621.0 \
+	"$scripts/build.sh" --out a.exe "$tmp/a.cpp"
+rm "$sdkfx/xwin/sdk/include/10.0.26100"
+ln -s . "$sdkfx/xwin/sdk/include/10.0.22621"
+fails_with "the SDK's UCRT missing names fetch-sdk.sh" "no Universal CRT 10.0.22621.0" \
+	env UWP_XWIN_ROOT="$sdkfx/xwin" UWP_SDK_ROOT="$sdkfx/sdk" UWP_SDK_VERSION=10.0.22621.0 \
+	"$scripts/build.sh" --out a.exe "$tmp/a.cpp"
+ucrt_fx="$sdkfx/sdk/Windows Kits/10"
+mkdir -p "$ucrt_fx/Include/10.0.22621.0/ucrt" "$ucrt_fx/Lib/10.0.22621.0/ucrt/x64"
+touch "$ucrt_fx/Include/10.0.22621.0/ucrt/stdlib.h" "$ucrt_fx/Lib/10.0.22621.0/ucrt/x64/ucrt.lib"
+# Past the gate the compile runs against empty fixture headers, so it is kept
+# inside the fixture; only the gate's verdict is checked.
+lacks "one SDK version passes the gate" "Universal CRT" \
+	env -C "$sdkfx" UWP_XWIN_ROOT="$sdkfx/xwin" UWP_SDK_ROOT="$sdkfx/sdk" \
+	UWP_SDK_VERSION=10.0.22621.0 "$scripts/build.sh" --out "$sdkfx/a.exe" "$tmp/a.cpp"
+rm -rf "$sdkfx"
 # Unrecognised arguments become sources, so a glued -I/path would reach clang-cl
 # as a file. The error has to name the argument, not the compiler.
 fails_with "a source that does not exist is refused" "no such source file" \
@@ -789,13 +813,16 @@ assert "<version> comes before <windows.h>" "wrong order in msvc-compat.h" \
 	"$(grep -n "include <windows.h>" "$compat" | cut -d: -f1)"
 assert "GetCurrentTime is undefined after windows.h" "no #undef GetCurrentTime" \
 	grep -q "^#undef GetCurrentTime" "$compat"
-assert "cstdlib APP bridge declares getenv under non-desktop family" "no getenv bridge" \
-	grep -q 'char \*__cdecl getenv' "$compat"
-assert "cstdlib APP bridge declares system under non-desktop family" "no system bridge" \
-	grep -q 'int __cdecl system' "$compat"
+# The SDK's own UCRT declares getenv and system for apps (gotcha 7). A
+# declaration here would only hide a UCRT that does not match the SDK, which
+# build.sh refuses instead.
+if grep -qE '__cdecl (getenv|system)' "$compat"; then
+	no "msvc-compat.h declares no CRT function" "a getenv/system bridge is back"
+else
+	ok "msvc-compat.h declares no CRT function"
+fi
 # --uwp must set the app family (VS parity). Without it DESKTOP stays true and
-# desktop Win32 compiles into AppContainer images (gotcha 22). The cstdlib
-# bridge in msvc-compat.h is what makes the family settable (gotcha 7).
+# desktop Win32 compiles into AppContainer images (gotcha 22).
 assert "--uwp sets WINAPI_FAMILY=WINAPI_FAMILY_APP" "APP family not set for --uwp" \
 	grep -q 'extra+=(/DWINAPI_FAMILY=WINAPI_FAMILY_APP)' "$scripts/build.sh"
 if grep -qF 'extra+=(/DNOGDI)' "$scripts/build.sh"; then
@@ -821,33 +848,25 @@ else
 		/c "$tmp/cpp.cpp" -o "$tmp/cpp.obj"
 	rm -rf "$tmp"
 fi
-# Full xwin path: APP family + force-included bridge must compile <cstdlib>.
-# Without the bridge the STL using of getenv/system fails (gotcha 7).
+# Full toolchain: the app family compiles <cstdlib> against the SDK's own UCRT,
+# with nothing but msvc-compat.h force-included (gotcha 7).
 xwin_root="${UWP_XWIN_ROOT:-$HOME/.cache/uwp-crossbuild/xwin}"
+sdk_ucrt="${UWP_SDK_ROOT:-$HOME/.cache/uwp-crossbuild/sdk}/Windows Kits/10/Include/${UWP_SDK_VERSION:-10.0.22621.0}/ucrt"
 if ! command -v clang-cl >/dev/null; then
-	skip "APP family compiles <cstdlib> with the bridge" "clang-cl is not installed"
-elif [[ ! -d "$xwin_root/crt/include" || ! -d "$xwin_root/sdk/include/ucrt" ]]; then
-	skip "APP family compiles <cstdlib> with the bridge" "xwin CRT not at $xwin_root"
+	skip "APP family compiles <cstdlib> with the SDK's UCRT" "clang-cl is not installed"
+elif [[ ! -d "$xwin_root/crt/include" || ! -f "$sdk_ucrt/stdlib.h" ]]; then
+	skip "APP family compiles <cstdlib> with the SDK's UCRT" "no xwin CRT or fetch-sdk.sh UCRT"
 else
 	tmp="$(mktemp -d)"
-	printf '#include <cstdlib>\nint f() { return 0; }\n' >"$tmp/app_cstdlib.cpp"
-	succeeds_with "APP family compiles <cstdlib> with the bridge" "" \
+	printf '#include <cstdlib>\nint f() { return std::getenv("X") != nullptr; }\n' >"$tmp/app_cstdlib.cpp"
+	succeeds_with "APP family compiles <cstdlib> with the SDK's UCRT" "" \
 		clang-cl -target x86_64-pc-windows-msvc /std:c++20 \
 		/DWINAPI_FAMILY=WINAPI_FAMILY_APP "/FI$compat" \
 		/imsvc "$xwin_root/crt/include" \
-		/imsvc "$xwin_root/sdk/include/ucrt" \
+		/imsvc "$sdk_ucrt" \
 		/imsvc "$xwin_root/sdk/include/um" \
 		/imsvc "$xwin_root/sdk/include/shared" \
 		/c "$tmp/app_cstdlib.cpp" -o "$tmp/app_cstdlib.obj"
-	# Negative control: same TU without the bridge must still fail.
-	fails_with "APP family without the bridge still breaks <cstdlib>" "getenv" \
-		clang-cl -target x86_64-pc-windows-msvc /std:c++20 \
-		/DWINAPI_FAMILY=WINAPI_FAMILY_APP \
-		/imsvc "$xwin_root/crt/include" \
-		/imsvc "$xwin_root/sdk/include/ucrt" \
-		/imsvc "$xwin_root/sdk/include/um" \
-		/imsvc "$xwin_root/sdk/include/shared" \
-		/c "$tmp/app_cstdlib.cpp" -o "$tmp/app_cstdlib_nobridge.obj"
 	# Partition itself: DESKTOP must be false under APP (GDI / RegOpen gated).
 	printf '#include <windows.h>\n#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)\n#error desktop\n#endif\nint x;\n' \
 		>"$tmp/partition.cpp"
@@ -855,7 +874,7 @@ else
 		clang-cl -target x86_64-pc-windows-msvc /std:c++20 \
 		/DWINAPI_FAMILY=WINAPI_FAMILY_APP "/FI$compat" \
 		/imsvc "$xwin_root/crt/include" \
-		/imsvc "$xwin_root/sdk/include/ucrt" \
+		/imsvc "$sdk_ucrt" \
 		/imsvc "$xwin_root/sdk/include/um" \
 		/imsvc "$xwin_root/sdk/include/shared" \
 		/c "$tmp/partition.cpp" -o "$tmp/partition.obj"

@@ -80,6 +80,56 @@ fetch() { # fetch <url> <destination>
 	mv "$2.part" "$2"
 }
 
+# One SDK version for the whole compile. xwin splats the SDK headers and
+# libraries at the version --sdk-version gives it, the latest otherwise, and
+# always the latest Universal CRT, which comes from a package of its own.
+# fetch-sdk.sh extracts the tools, the metadata and that SDK's own UCRT at
+# UWP_SDK_VERSION. A compile that mixes them builds against headers Visual
+# Studio never pairs: UCRT 10.0.26624 declares _putenv_s and _wgetenv for
+# desktop apps only, so a source that compiles under MSVC against the 22621
+# UCRT fails here.
+
+# The SDK's library directory for an xwin architecture directory.
+sdk_arch_dir() { # sdk_arch_dir <x86_64|aarch64>
+	case "$1" in
+	x86_64) echo x64 ;;
+	aarch64) echo arm64 ;;
+	*) die "no SDK library directory for architecture $1" ;;
+	esac
+}
+
+# Prints what is inconsistent, nothing when the SDK is one version.
+# check-deps.sh reports it; build.sh refuses through require_sdk.
+#   sdk_problem <xwin root> <sdk root> <sdk version> <arch dir>
+sdk_problem() {
+	local xwin="$1" sdk="$2" version="$3" short="${3%.0}" sdk_arch found
+	sdk_arch=$(sdk_arch_dir "$4")
+	# xwin splat leaves one version link: sdk/include/10.0.22621 -> .
+	if [[ ! -e "$xwin/sdk/include/$short" ]]; then
+		found=$(cd "$xwin/sdk/include" 2>/dev/null && compgen -G '10.0.*' | tr '\n' ' ')
+		echo "the xwin splat at $xwin is SDK ${found:-unknown}, and this toolchain targets $version.
+  Splat that version. xwin matches the package name, so give it in full:
+    xwin --accept-license --arch x86_64 --sdk-version $short \\
+      --cache-dir ~/.cache/uwp-crossbuild/xwin-download splat --output $xwin"
+		return 0
+	fi
+	if [[ ! -f "$sdk/Windows Kits/10/Include/$version/ucrt/stdlib.h" ||
+		! -f "$sdk/Windows Kits/10/Lib/$version/ucrt/$sdk_arch/ucrt.lib" ]]; then
+		echo "no Universal CRT $version under $sdk — run fetch-sdk.sh"
+	fi
+}
+
+# Dies with sdk_problem's message. Otherwise sets SDK_UCRT_INCLUDE and
+# SDK_UCRT_LIB: the UCRT that belongs to that SDK, not xwin's.
+#   require_sdk <xwin root> <sdk root> <sdk version> <arch dir>
+require_sdk() {
+	local problem
+	problem=$(sdk_problem "$@")
+	[[ -z "$problem" ]] || die "$problem"
+	SDK_UCRT_INCLUDE="$2/Windows Kits/10/Include/$3/ucrt"
+	SDK_UCRT_LIB="$2/Windows Kits/10/Lib/$3/ucrt/$(sdk_arch_dir "$4")"
+}
+
 # The platform names both halves of a build: the conditions the evaluator
 # takes and the target build.sh compiles for. A --platform left at its default
 # yields to UWP_TARGET/UWP_ARCH_DIR from the environment — the workflow that
