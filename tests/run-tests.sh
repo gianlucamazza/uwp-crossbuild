@@ -202,13 +202,13 @@ fails_with "a source that does not exist is refused" "no such source file" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe "-I$tmp"
 fails_with "a flag with no value says so" "--out needs a value" \
 	"$scripts/build.sh" --out
-# A per-source argument for a file that is not compiled would vanish silently.
-fails_with "--source-arg for a source that is not compiled" "not among the sources" \
+# A source's own list for a file that is not compiled would vanish silently.
+fails_with "--source-define for a source that is not compiled" "not among the sources" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe \
-	--source-arg "$tmp/other.cpp" /DX "$tmp/a.cpp"
-fails_with "--source-arg needs a source and an argument" "needs a source and an argument" \
+	--source-define "$tmp/other.cpp" X "$tmp/a.cpp"
+fails_with "--source-include needs a source and a value" "needs a source and a value" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe \
-	--source-arg "$tmp/a.cpp"
+	--source-include "$tmp/a.cpp"
 fails_with "--jobs takes a positive integer" "--jobs must be a positive integer" \
 	env UWP_XWIN_ROOT=/nonexistent "$scripts/build.sh" --out a.exe --jobs 0 "$tmp/a.cpp"
 # An archive has no DllCharacteristics: /appcontainer is link-only. But a UWP
@@ -647,26 +647,38 @@ fails_with "a linker asked to write the winmd" "gen-projection.sh" \
 	"$read_vcxproj" "$refused/generate-winmd.vcxproj"
 fails_with "a project that is not there" "no such project" \
 	"$read_vcxproj" "$refused/absent.vcxproj"
-# Per-source metadata: an include path or define that keeps %(Name) adds to the
-# project's for that source; ExcludedFromBuild drops the source under the
-# configuration it names; a replacement, or any other setting, is refused.
+# Per-source metadata: an include path or define list on a source is that
+# source's whole list, %(Name) expanded where it is written, so order survives;
+# without %(Name) it replaces the project's; ExcludedFromBuild drops the source
+# whatever precedes it; any other per-file setting is refused.
 per_source="$here/fixtures/per-source/per-source.vcxproj"
-succeeds_with "a per-source include path reaches that source only" \
-	"own.cpp"$'\t'"include"$'\t'"only/here" \
+tab=$'\t'
+succeeds_with "a source's own include path is searched before the project's" \
+	"own.cpp${tab}include${tab}only/here"$'\n'"own.cpp${tab}include${tab}common" \
 	"$read_vcxproj" "$per_source" --field source_args
-succeeds_with "a per-source define reaches that source only" \
-	"own.cpp"$'\t'"define"$'\t'"ONLY_HERE=1" \
+succeeds_with "a define written before %(PreprocessorDefinitions) comes first" \
+	"own.cpp${tab}define${tab}ONLY_HERE=1"$'\n'"own.cpp${tab}define${tab}EVERYWHERE" \
+	"$read_vcxproj" "$per_source" --field source_args
+succeeds_with "a define written after %(PreprocessorDefinitions) comes last" \
+	"appended.cpp${tab}define${tab}EVERYWHERE"$'\n'"appended.cpp${tab}define${tab}MODE=1" \
+	"$read_vcxproj" "$per_source" --field source_args
+lacks "a source with no metadata of its own keeps the project's lists" "plain.cpp" \
 	"$read_vcxproj" "$per_source" --field source_args
 lacks "ObjectFileName on a source is inert" "own_cxx" \
 	"$read_vcxproj" "$per_source" --field source_args
-lacks "ExcludedFromBuild drops the source" "excluded.cpp" \
+lacks "ExcludedFromBuild drops the source, whatever precedes it" "excluded.cpp" \
 	"$read_vcxproj" "$per_source" --field sources.cpp
 succeeds_with "an exclusion conditioned on another configuration keeps it" "other-config.cpp" \
 	"$read_vcxproj" "$per_source" --field sources.cpp
 lacks "the same exclusion under its configuration drops it" "other-config.cpp" \
 	"$read_vcxproj" "$per_source" --config Debug --field sources.cpp
-fails_with "a per-source list that replaces the project's" "keep %(AdditionalIncludeDirectories)" \
-	"$read_vcxproj" "$refused/per-source-replaces.vcxproj"
+succeeds_with "a list without %(Name) replaces the project's for that source" \
+	"a.cpp${tab}include${tab}only/here" \
+	"$read_vcxproj" "$here/fixtures/per-source/replaces.vcxproj" --field source_args
+lacks "and the project's list is not added to it" "common" \
+	"$read_vcxproj" "$here/fixtures/per-source/replaces.vcxproj" --field source_args
+succeeds_with "--flags carries a source's own list for build.sh" "--source-include" \
+	"$read_vcxproj" "$per_source" --flags
 fails_with "a compiler setting on one source" "<Optimization> on a single source" \
 	"$read_vcxproj" "$refused/per-source-setting.vcxproj"
 # The OS activates what the manifest names. A package whose executable is called
@@ -896,6 +908,23 @@ else
 		/imsvc "$xwin_root/sdk/include/um" \
 		/imsvc "$xwin_root/sdk/include/shared" \
 		/c "$tmp/app_cstdlib.cpp" -o "$tmp/app_cstdlib.obj"
+	# A source's own lists reach its compile in their order, in place of the
+	# project's: its include path finds a/config.h before the project's b, and
+	# its last define wins. The control without them takes b's #error.
+	mkdir -p "$tmp/a" "$tmp/b"
+	printf '#define PICKED 1\n' >"$tmp/a/config.h"
+	printf '#error the project include path won\n' >"$tmp/b/config.h"
+	printf '#include "config.h"\nstatic_assert(PICKED == 1 && MODE == 1, "order");\nint g;\n' \
+		>"$tmp/own.cpp"
+	succeeds_with "build.sh applies a source's own lists in order" "" \
+		"$scripts/build.sh" --static-lib --out "$tmp/own.lib" \
+		--project-include "$tmp/b" --project-define MODE=0 \
+		--source-include "$tmp/own.cpp" "$tmp/a" --source-include "$tmp/own.cpp" "$tmp/b" \
+		--source-define "$tmp/own.cpp" MODE=0 --source-define "$tmp/own.cpp" MODE=1 \
+		"$tmp/own.cpp" -- -Wno-macro-redefined
+	fails_with "without them the project's lists apply" "the project include path won" \
+		"$scripts/build.sh" --static-lib --out "$tmp/project.lib" \
+		--project-include "$tmp/b" --project-define MODE=0 "$tmp/own.cpp"
 	# Partition itself: DESKTOP must be false under APP (GDI / RegOpen gated).
 	printf '#include <windows.h>\n#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)\n#error desktop\n#endif\nint x;\n' \
 		>"$tmp/partition.cpp"

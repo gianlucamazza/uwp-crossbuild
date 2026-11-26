@@ -44,13 +44,16 @@ Properties with conditions, `Exists()`, per-configuration
 all of it, because a real project uses all of it.
 
 So is metadata on a single `ClCompile` item. An include path or define list
-that keeps `%(AdditionalIncludeDirectories)` or `%(PreprocessorDefinitions)`
-adds to the project's for that source, and `build.sh --source-arg` gives it to
-that compile only (`--field source_args` shows them). `ExcludedFromBuild`
-drops the source under the configuration it names. A list without the
-`%(…)` would replace the project's for one file, and any other per-file setting
-would compile that file differently: both are refused by name rather than
-dropped.
+there is that source's whole list, as MSBuild evaluates it:
+`%(AdditionalIncludeDirectories)` or `%(PreprocessorDefinitions)` stands for the
+project's list at the position it is written, so `here;%(…)` searches `here`
+first and `%(…);MODE=1` defines `MODE` last, and a list without it replaces
+the project's for that file. `build.sh --source-include` and
+`--source-define` take it per source, in order (`--field source_args` shows
+it), and such a source is compiled without the PCH, which was built with the
+project's lists. `ExcludedFromBuild` drops the source under the configuration
+it names. Any other per-file setting would compile that file differently from
+how it is compiled here, and is refused by name rather than dropped.
 
 What is refused outright is an MSBuild _action_: an inline `<Target>` that runs
 `<Exec>`, or a property function such as `$([System.IO.Path]::Combine(…))`.

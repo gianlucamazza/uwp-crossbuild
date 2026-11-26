@@ -15,7 +15,12 @@
       <PreprocessorDefinitions>ONLY_HERE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ObjectFileName>$(IntDir)%(RelativeDir)own_cxx.obj</ObjectFileName>
     </ClCompile>
+    <ClCompile Include="appended.cpp">
+      <PreprocessorDefinitions>%(PreprocessorDefinitions);MODE=1</PreprocessorDefinitions>
+    </ClCompile>
+    <!-- Excluded: what it says before the exclusion does not matter. -->
     <ClCompile Include="excluded.cpp">
+      <Optimization>Disabled</Optimization>
       <ExcludedFromBuild>true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="other-config.cpp">

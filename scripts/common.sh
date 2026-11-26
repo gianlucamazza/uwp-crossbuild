@@ -109,7 +109,7 @@ sdk_problem() {
 		found=$(cd "$xwin/sdk/include" 2>/dev/null && compgen -G '10.0.*' | tr '\n' ' ')
 		echo "the xwin splat at $xwin is SDK ${found:-unknown}, and this toolchain targets $version.
   Splat that version. xwin matches the package name, so give it in full:
-    xwin --accept-license --arch x86_64 --sdk-version $short \\
+    xwin --accept-license --arch $4 --sdk-version $short \\
       --cache-dir ~/.cache/uwp-crossbuild/xwin-download splat --output $xwin"
 		return 0
 	fi

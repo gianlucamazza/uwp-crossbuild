@@ -253,20 +253,21 @@ build_project() { # build_project <project> <output path> <static|application>
 	local -a arguments=(--out "$output") passthrough=()
 	local entry
 	read_field listed "$vcxproj" includes
-	for entry in ${listed[@]+"${listed[@]}"}; do arguments+=(-I "$directory/$entry"); done
+	for entry in ${listed[@]+"${listed[@]}"}; do arguments+=(--project-include "$directory/$entry"); done
 	read_field listed "$vcxproj" defines
-	for entry in ${listed[@]+"${listed[@]}"}; do passthrough+=("/D$entry"); done
+	for entry in ${listed[@]+"${listed[@]}"}; do arguments+=(--project-define "$entry"); done
 	read_field listed "$vcxproj" options
 	for entry in ${listed[@]+"${listed[@]}"}; do passthrough+=("$entry"); done
-	# One source's own include path or define (source<TAB>kind<TAB>value).
+	# A source's own lists, in order (source<TAB>include|define<TAB>value). An
+	# empty value is an empty list for that source.
 	local own_source own_kind own_value
 	read_field listed "$vcxproj" source_args
 	for entry in ${listed[@]+"${listed[@]}"}; do
 		IFS=$'\t' read -r own_source own_kind own_value <<<"$entry"
 		case "$own_kind" in
-		include) arguments+=(--source-arg "$directory/$own_source" "/I$directory/$own_value") ;;
-		define) arguments+=(--source-arg "$directory/$own_source" "/D$own_value") ;;
-		*) die "$vcxproj: unknown per-source argument kind: $own_kind" ;;
+		include) arguments+=(--source-include "$directory/$own_source" "${own_value:+$directory/$own_value}") ;;
+		define) arguments+=(--source-define "$directory/$own_source" "$own_value") ;;
+		*) die "$vcxproj: unknown per-source list kind: $own_kind" ;;
 		esac
 	done
 

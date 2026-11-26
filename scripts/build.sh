@@ -2,7 +2,9 @@
 # build.sh — compile C++/WinRT sources into a Windows PE, from Linux.
 #
 #   build.sh --out app.exe [--uwp] [--pch pch.h] [--jobs N] [-I DIR] \
-#            [--source-arg SRC ARG] [--link-arg X] src/*.cpp [-- extra clang-cl args]
+#            [--project-include DIR] [--project-define D] \
+#            [--source-include SRC DIR] [--source-define SRC D] \
+#            [--link-arg X] src/*.cpp [-- extra clang-cl args]
 #
 #     --uwp        build for the app container. Sets WINAPI_FAMILY=APP at
 #                  compile time (VS parity). For an executable also links
@@ -23,9 +25,19 @@
 #                  it: including the XAML projection costs ~32 s per translation
 #                  unit, ~1 s through a PCH (measured, see README).
 #     --jobs       parallel compiles (default: nproc)
-#     --source-arg one clang-cl argument for one source only (repeatable): a
-#                  Visual Studio project's per-file include path or define.
-#                  SRC must be spelled as it is among the sources.
+#     --project-include, --project-define
+#                  a Visual Studio project's include path and define lists
+#                  (repeatable, in order). They apply to every source, and to
+#                  the PCH, unless the source has its own list.
+#     --source-include SRC DIR, --source-define SRC D
+#                  one source's own list (repeatable, in order), which replaces
+#                  the project's for that source: what MSBuild makes of a
+#                  per-file <AdditionalIncludeDirectories> or
+#                  <PreprocessorDefinitions>, %(Name) expanded in place. An
+#                  empty DIR or D gives the source an empty list. Such a source
+#                  is compiled without the PCH, which was built with the
+#                  project's lists. SRC must be spelled as it is among the
+#                  sources.
 #     --link-arg   pass one argument straight to lld-link (repeatable)
 #     --static-lib archive the objects into a .lib instead of linking an
 #                  executable. What a Visual Studio project marked
@@ -68,9 +80,11 @@ sources=()
 extra=()
 link_args=()
 include_dirs=()
-# One source's own clang-cl arguments, newline-separated: a path can hold a
-# space, never a newline.
-declare -A source_args=()
+project_includes=()
+project_defines=()
+# One source's own lists, newline-terminated entries: a path can hold a space,
+# never a newline. A key that exists with no entry is an empty list.
+declare -A source_includes=() source_defines=()
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -83,10 +97,16 @@ while [[ $# -gt 0 ]]; do
 	--static-lib) static_lib=1 && shift ;;
 	-I | --include) value "$1" $# "${2:-}" && include_dirs+=("/I$2") && shift 2 ;;
 	--link-arg) value "$1" $# "${2:-}" && link_args+=("$2") && shift 2 ;;
-	--source-arg)
+	--project-include) value "$1" $# "${2:-}" && project_includes+=("/I$2") && shift 2 ;;
+	--project-define) value "$1" $# "${2:-}" && project_defines+=("/D$2") && shift 2 ;;
+	--source-include | --source-define)
 		value "$1" $# "${2:-}"
-		[[ $# -ge 3 && -n "$3" && "$3" != --* ]] || die "--source-arg needs a source and an argument"
-		source_args[$2]+="$3"$'\n'
+		[[ $# -ge 3 && "$3" != --* ]] || die "$1 needs a source and a value"
+		if [[ "$1" == --source-include ]]; then
+			source_includes[$2]+="${3:+/I$3$'\n'}"
+		else
+			source_defines[$2]+="${3:+/D$3$'\n'}"
+		fi
 		shift 3
 		;;
 	--)
@@ -101,11 +121,11 @@ done
 [[ -n "$out" ]] || die "--out is required"
 [[ "$jobs" =~ ^[1-9][0-9]*$ ]] || die "--jobs must be a positive integer, got: $jobs"
 [[ ${#sources[@]} -gt 0 ]] || die "no source files given"
-# An argument for a source that is not compiled would be dropped without a word.
-for src in "${!source_args[@]}"; do
+# A list for a source that is not compiled would be dropped without a word.
+for src in "${!source_includes[@]}" "${!source_defines[@]}"; do
 	listed=0
 	for candidate in "${sources[@]}"; do [[ "$candidate" == "$src" ]] && listed=1 && break; done
-	[[ $listed -eq 1 ]] || die "--source-arg names $src, which is not among the sources"
+	[[ $listed -eq 1 ]] || die "--source-include/--source-define name $src, which is not among the sources"
 done
 # Anything unrecognised is taken as a source, so a glued `-I/path` — the form
 # clang-cl itself accepts — would be handed to the compiler as a file. Check
@@ -174,8 +194,9 @@ common=(
 	/imsvc "$XWIN_ROOT/sdk/include/winrt"
 	${cppwinrt_inc[@]+"${cppwinrt_inc[@]}"}
 	/imsvc "$XWIN_ROOT/sdk/include/cppwinrt"
-	${include_dirs[@]+"${include_dirs[@]}"}
 )
+# -I directories come after the project's include path, as they always have:
+# the project's list, or a source's own, is searched first.
 libs=(
 	/libpath:"$XWIN_ROOT/crt/lib/$ARCH_DIR"
 	/libpath:"$XWIN_ROOT/sdk/lib/um/$ARCH_DIR"
@@ -290,7 +311,10 @@ if [[ -n "$pch" ]]; then
 	if [[ ! -f "$pchfile" || "$pch" -nt "$pchfile" || "$compat" -nt "$pchfile" ]]; then
 		echo "  precompiling $(basename "$pch")"
 		printf '#include "%s"\n' "$(basename "$pch")" >"$objdir/pch.cpp"
-		clang-cl "${common[@]}" "${cxx[@]}" ${extra[@]+"${extra[@]}"} /c "$objdir/pch.cpp" \
+		clang-cl "${common[@]}" ${project_includes[@]+"${project_includes[@]}"} \
+			${include_dirs[@]+"${include_dirs[@]}"} ${project_defines[@]+"${project_defines[@]}"} \
+			"${cxx[@]}" ${extra[@]+"${extra[@]}"} \
+			/c "$objdir/pch.cpp" \
 			"/Yc$(basename "$pch")" "/Fp$pchfile" "/Fo$objdir/pch.obj" \
 			"/I$(cd "$(dirname "$pch")" && pwd)"
 	fi
@@ -319,13 +343,28 @@ for src in "${sources[@]}"; do
 	crc=$(printf %s "$src" | cksum)
 	obj="$objdir/${flat//\//_}.${crc%% *}.obj"
 	objects+=("$obj")
-	# A C source takes neither the C++ standard nor the C++ precompiled header.
-	lang=("${cxx[@]}" ${pch_args[@]+"${pch_args[@]}"})
+	# The project's lists, or the source's own in their place.
+	includes=(${project_includes[@]+"${project_includes[@]}"})
+	defines=(${project_defines[@]+"${project_defines[@]}"})
+	own=0
+	if [[ -v "source_includes[$src]" ]]; then
+		includes=()
+		[[ -z "${source_includes[$src]}" ]] || mapfile -t includes <<<"${source_includes[$src]%$'\n'}"
+		own=1
+	fi
+	if [[ -v "source_defines[$src]" ]]; then
+		defines=()
+		[[ -z "${source_defines[$src]}" ]] || mapfile -t defines <<<"${source_defines[$src]%$'\n'}"
+		own=1
+	fi
+	# A C source takes neither the C++ standard nor the C++ precompiled header,
+	# and neither does a source with lists of its own: the PCH was built with
+	# the project's, and would hand it declarations made under other defines.
+	lang=("${cxx[@]}")
+	[[ $own -eq 1 ]] || lang+=(${pch_args[@]+"${pch_args[@]}"})
 	[[ "$src" == *.c ]] && lang=("/std:$C_STD")
-	own=()
-	[[ -z "${source_args[$src]:-}" ]] || mapfile -t own <<<"${source_args[$src]%$'\n'}"
-	clang-cl "${common[@]}" "${lang[@]}" ${own[@]+"${own[@]}"} ${extra[@]+"${extra[@]}"} \
-		/c "$src" -o "$obj" &
+	clang-cl "${common[@]}" ${includes[@]+"${includes[@]}"} ${include_dirs[@]+"${include_dirs[@]}"} \
+		${defines[@]+"${defines[@]}"} "${lang[@]}" ${extra[@]+"${extra[@]}"} /c "$src" -o "$obj" &
 	pids+=($!)
 	# A plain `wait -n` loop would be neater but needs bash 4.3+ semantics that
 	# differ across the versions in the wild; batching is enough here.

@@ -36,10 +36,11 @@ What it evaluates:
                   ProjectReference, PackageReference; * and ** globs, Exclude.
   item metadata   ItemDefinitionGroup for ClCompile and Link, merged in order,
                   where %(Name) means "whatever came before". On a ClCompile
-                  item: an include path or define list that keeps %(Name) adds
-                  to the project's for that source (field source_args, as
-                  source<TAB>include|define<TAB>value); ExcludedFromBuild
-                  drops it; anything else is refused.
+                  item an include path or define list is that source's whole
+                  list, %(Name) expanded in place (field source_args, as
+                  source<TAB>include|define<TAB>value, in order);
+                  ExcludedFromBuild drops the source; anything else is
+                  refused.
 """
 
 import argparse
@@ -640,17 +641,22 @@ class Description:
             or evaluator.project.stem
         )
         self.sources = {"cpp": [], "c": []}
+        # One row per entry of a source's own list, in order. A source with an
+        # empty list of its own still gets one row, with an empty value, so
+        # "no project includes for this source" survives the trip to bash.
         self.source_args = []
         for item in evaluator.items.get("ClCompile", []):
-            extra = self._item_args(item)
-            if extra is None:
+            lists = self._item_args(item)
+            if lists is None:
                 continue  # ExcludedFromBuild
             source = self._relative(item["path"])
             language = "c" if item["path"].suffix.lower() == ".c" else "cpp"
             self.sources[language].append(source)
-            self.source_args += [
-                {"source": source, "kind": kind, "value": value} for kind, value in extra
-            ]
+            for kind, values in lists.items():
+                self.source_args += [
+                    {"source": source, "kind": kind, "value": value}
+                    for value in (values or [""])
+                ]
         self.store_crt = False  # set by _clcompile when /MD can be honoured
         # VS UWP toolset sets this on both Application and StaticLibrary
         # projects. The compile family (WINAPI_FAMILY=APP) follows it; the
@@ -758,47 +764,46 @@ class Description:
         )
 
     # Per-source ClCompile metadata, set on the item rather than in an
-    # ItemDefinitionGroup. An include path or define list that keeps %(Name)
-    # adds to the project's for that one source; build.sh takes those per
-    # source. Without %(Name) it replaces the project's list for that source,
-    # which build.sh cannot express. ExcludedFromBuild drops the source. The
-    # names IGNORED_CLCOMPILE lists are inert here for the same reasons as in
-    # the definitions. Anything else would compile this one source differently
+    # ItemDefinitionGroup. An include path or define list on a source is that
+    # source's whole list, as MSBuild evaluates it: %(Name) stands for the
+    # project's list at the position it is written, so `here;%(Name)` searches
+    # here first and `%(Name);MODE=1` defines MODE last; without %(Name) the
+    # project's list does not apply to that source at all. build.sh takes the
+    # effective list per source, in that order, in place of the project's.
+    # ExcludedFromBuild drops the source, whatever else it says. The names
+    # IGNORED_CLCOMPILE lists are inert here for the same reasons as in the
+    # definitions. Anything else would compile this one source differently
     # from how it is compiled here, so it is refused by name, not dropped.
-    PER_ITEM_ADDITIVE = {
+    PER_ITEM_LISTS = {
         "AdditionalIncludeDirectories": "include",
         "PreprocessorDefinitions": "define",
     }
 
     def _item_args(self, item):
-        """(kind, value) pairs for one source, or None when it is not built."""
+        """{kind: effective list} for one source, or None when it is not built."""
+        metadata = item["metadata"]
+        if metadata.get("ExcludedFromBuild", "").strip().lower() == "true":
+            return None
         where = self._relative(item["path"])
-        extra = []
-        for name, value in item["metadata"].items():
-            if name in IGNORED_CLCOMPILE:
+        lists = {}
+        for name, value in metadata.items():
+            if name in IGNORED_CLCOMPILE or name == "ExcludedFromBuild":
                 continue
-            if name == "ExcludedFromBuild":
-                if value.strip().lower() == "true":
-                    return None
-                continue
-            kind = self.PER_ITEM_ADDITIVE.get(name)
+            kind = self.PER_ITEM_LISTS.get(name)
             if kind is None:
                 raise Refusal(
                     f"{where}: <ClCompile><{name}> on a single source is not "
                     f"reproduced here"
                 )
-            inherited = f"%({name})"
-            if inherited not in value:
-                raise Refusal(
-                    f"{where}: <{name}> without {inherited} replaces the "
-                    f"project's list for this source, which is not reproduced "
-                    f"here; keep {inherited} in it to add to the list instead"
-                )
-            for entry in semicolon_list(value.replace(inherited, "")):
-                if kind == "include":
-                    entry = self._relative(self.directory / windows_path(entry))
-                extra.append((kind, entry))
-        return extra
+            inherited = self.evaluator.clcompile.get(name, "")
+            effective = semicolon_list(value.replace(f"%({name})", f";{inherited};"))
+            if kind == "include":
+                effective = [
+                    self._relative(self.directory / windows_path(entry))
+                    for entry in effective
+                ]
+            lists[kind] = effective
+        return lists
 
     def _relative(self, path):
         try:
@@ -1089,7 +1094,11 @@ class Description:
         """
         lines = []
         for directory in self.includes:
-            lines += ["-I", directory]
+            lines += ["--project-include", directory]
+        for define in self.defines:
+            lines += ["--project-define", define]
+        for row in self.source_args:
+            lines += [f"--source-{row['kind']}", row["source"], row["value"]]
         if self.pch:
             lines += ["--pch", self.pch]
         if self.type == "StaticLibrary":
@@ -1108,7 +1117,6 @@ class Description:
             for option in self.link["options"]:
                 lines += ["--link-arg", option]
         lines.append("--")
-        lines += [f"/D{define}" for define in self.defines]
         lines += self.compile_flags
         return lines
 
