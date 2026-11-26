@@ -33,11 +33,11 @@ XWIN_ROOT="${UWP_XWIN_ROOT:-$HOME/.cache/uwp-crossbuild/xwin}"
 # this SDK pairs with. xwin's UCRT is the newest, whatever SDK it splats, and
 # a newer one declares getenv and _putenv_s for desktop apps only (README n°7).
 MSIS=(
-	"Windows SDK for Windows Store Apps Tools-x86_en-us.msi"      # midlrt, makepri, makeappx
-	"Windows SDK for Windows Store Apps Headers-x86_en-us.msi"    # winrtbase.idl and friends
-	"Windows SDK for Windows Store Apps Contracts-x86_en-us.msi"  # *.Contract.winmd
-	"Windows SDK Facade Windows WinMD Versioned-x86_en-us.msi"    # UnionMetadata/Windows.winmd
-	"Universal CRT Headers Libraries and Sources-x86_en-us.msi"   # Include and Lib /ucrt
+	"Windows SDK for Windows Store Apps Tools-x86_en-us.msi"     # midlrt, makepri, makeappx
+	"Windows SDK for Windows Store Apps Headers-x86_en-us.msi"   # winrtbase.idl and friends
+	"Windows SDK for Windows Store Apps Contracts-x86_en-us.msi" # *.Contract.winmd
+	"Windows SDK Facade Windows WinMD Versioned-x86_en-us.msi"   # UnionMetadata/Windows.winmd
+	"Universal CRT Headers Libraries and Sources-x86_en-us.msi"  # Include and Lib /ucrt
 )
 
 [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]] && usage
